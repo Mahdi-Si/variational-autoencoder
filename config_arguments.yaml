@@ -1,0 +1,26 @@
+general_config:
+  lr: 0.001
+  weight_decay: 0.0
+  checkpoint_frequency: 5
+  validation_frequency: 2
+  max_iter: 99000
+  batch_size:
+    train: 128
+    test: 1
+
+model_config:
+  VAE_model:
+    input_size: 300
+    input_dim: 1
+    decoder_hidden_dim: 1
+    encoder_hidden_dim: 50
+    latent_size: 150
+    num_LSTM_layers: 3
+
+
+folders_config:
+  out_dir_base: ./simulations
+
+dataset_config:
+    dataset_dir: dataset/FHR/Json/subset
+    stat_path: dataset/log_stats.npy
