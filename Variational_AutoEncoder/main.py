@@ -1,21 +1,18 @@
 import yaml
 import logging
 from datetime import datetime
-import os
 import sys
 import pickle
 from tqdm import tqdm
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
+from torch.utils.data import Dataset, DataLoader, random_split
 import torch.nn.functional as F
 import torch.nn as nn
-from sklearn.model_selection import KFold
-from scipy.signal import decimate
-from models.model import VAE, VAE_linear
+from datasets.custom_datasets import JsonDatasetPreload
+from Variational_AutoEncoder.models.model import VAE_linear
 import matplotlib.pyplot as plt
 import numpy as np
-from models.utils import plot_scattering, \
-    plot_original_reconstructed
+from Variational_AutoEncoder.utils.data_utils import plot_original_reconstructed
 import os
 import json
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -36,160 +33,12 @@ class StreamToLogger(object):
 
     def flush(self):
         pass
-
-
-def normalize_data(seq_list, min_val, max_val):
-    # todo there could be a better way to do normalization in the pipline
-    range_val = max_val - min_val
-    for dict_item in seq_list:
-        dict_item['fhr'] = [((x - min_val) / range_val) for x in dict_item['fhr']]
-
-
-def prepare_data(file_path=None, do_decimate=True):
-    with open(file_path, 'rb') as input_file:
-        dict_list = pickle.load(input_file)
-    if do_decimate:
-        for dict_item in dict_list:
-            dict_item['fhr'] = decimate(dict_item['fhr'], 16).tolist()
-    return dict_list
 # ----------------------------------------------------------------------------------------------------------------------
-
-
 def loss_function(x, x_hat, mean, log_var):
     reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum')
     kld = - 0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
-
     return reproduction_loss + (0.001 * kld)
 
-def vae_loss(reconstructed_x, original_x, mean, logvar):
-    """
-    Compute the VAE loss function.
-    :param reconstructed_x: the output from the decoder
-    :param original_x: the original input data
-    :param mean: the mean of the latent space distribution
-    :param logvar: the log variance of the latent space distribution
-    :return: total loss, reconstruction loss, KL divergence
-    """
-    # Reconstruction loss
-    recon_loss = F.mse_loss(reconstructed_x, original_x, reduction='sum')
-
-    # KL divergence
-    kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-
-    # Total loss
-    total_loss = recon_loss + (0.99 * kl_div)
-
-    return total_loss, recon_loss, kl_div
-
-
-class VAELoss(nn.Module):
-    def __init__(self):
-        super(VAELoss, self).__init__()
-
-    def forward(self, reconstructed_x, original_x, mean, logvar):
-        """
-        Compute the VAE loss function.
-        :param reconstructed_x: the output from the decoder
-        :param original_x: the original input data
-        :param mean: the mean of the latent space distribution
-        :param logvar: the log variance of the latent space distribution
-        :return: total loss, reconstruction loss, KL divergence
-        """
-        # Reconstruction loss
-        recon_loss = F.mse_loss(reconstructed_x, original_x, reduction='sum')
-
-        # KL divergence
-        kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-
-        # Scale KL divergence
-        kl_div_weighted = 0.99 * kl_div
-
-        # Total loss
-        total_loss = recon_loss + kl_div_weighted
-
-        return total_loss, recon_loss, kl_div
-
-
-# Custom dataset classes for different types of records ----------------------------------------------------------------
-class FHRDataset(Dataset):
-    # todo how to get the GUID
-    def __init__(self, list_dicts):
-        # Concatenating 'fhr' from both lists
-        self.data = [d['fhr'] for d in list_dicts]
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        # Convert data to PyTorch tensor
-        sample = torch.tensor(self.data[idx], dtype=torch.float)
-        return sample
-
-
-#  Dataset class from numpy .npy data
-class SignalDataset(Dataset):
-    def __init__(self, data):
-        # Assuming data is a NumPy array of shape (4000, 300)
-        self.data = torch.from_numpy(data).float()
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        # Get the sample at the specified index
-        sample = self.data[idx]
-        return sample
-
-
-class JsonDatasetPreload(Dataset):
-    def __init__(self, json_folder_path):
-        self.data_files = [os.path.join(json_folder_path, file) for file in os.listdir(json_folder_path) if
-                           file.endswith('.json')]
-        self.samples = []
-
-        # Load data
-        for file_path in self.data_files:
-            print(file_path)
-            with open(file_path, 'r') as file:
-                data = json.load(file)
-                # Assuming each file contains a single sample for simplicity
-                self.samples.append(data)
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        sample_data = self.samples[idx]
-        # Extracting the `fhr` data and possibly other information
-        fhr = torch.tensor(sample_data['fhr'])
-        up = torch.tensor(sample_data['up'])
-        target = torch.tensor(sample_data['target'])
-        sample_weight = torch.tensor(sample_data['sample_weights'])
-        # return fhr, target, sample_weight
-        return fhr
-
-
-class JsonDataset(Dataset):
-    def __init__(self, json_folder_path):
-        self.data_files = [os.path.join(json_folder_path, file) for file in os.listdir(json_folder_path) if
-                           file.endswith('.json')]
-
-    def __len__(self):
-        return len(self.data_files)
-
-    def __getitem__(self, idx):
-        # Load only the needed JSON file
-        file_path = self.data_files[idx]
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-
-        # Extract data
-        fhr = torch.tensor(data['fhr'])
-        up = torch.tensor(data['up'])
-        target = torch.tensor(data['target'])
-        sample_weight = torch.tensor(data['sample_weights'])
-
-        return fhr, target, sample_weight
 
 
 def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train_plot_dir=None, epoch_num=None):
@@ -269,7 +118,8 @@ def test(model=None, loss_fn=None, valid_dataloader=None, validation_plot_dir=No
 
 if __name__ == "__main__":
     # read config file -------------------------------------------------------------------------------------------------
-    with open('./config_arguments.yaml', 'r') as yaml_file:
+    config_file_path = r'config_arguments.yaml'
+    with open(config_file_path, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
     print(yaml.dump(config, sort_keys=False, default_flow_style=False))
     print('==' * 100)
@@ -298,13 +148,13 @@ if __name__ == "__main__":
     sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
 
     # Preparing training and testing datasets --------------------------------------------------------------------------
-    # todo improve this implementation for a more general dataset
     dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
     batch_size = config['general_config']['batch_size']['train']
+
     # healthy_dataset_path = os.path.join(dataset_dir, 'HEALTHY_signal_dicts.pkl')
     # hie_dataset_path = os.path.join(dataset_dir, 'HIE_signal_dicts.pkl')
-    #
+
     # healthy_list = prepare_data(healthy_dataset_path, do_decimate=False)
     # hie_list = prepare_data(hie_dataset_path, do_decimate=False)
 
@@ -334,7 +184,6 @@ if __name__ == "__main__":
     # hie_dataloader = DataLoader(fhr_hie_dataset, batch_size=1, shuffle=False)
 
     # define model and train it ----------------------------------------------------------------------------------------
-    # todo a better way to implement model config
     input_size = config['model_config']['VAE_model']['input_size']
     input_dim = config['model_config']['VAE_model']['input_dim']
     latent_size = config['model_config']['VAE_model']['latent_size']

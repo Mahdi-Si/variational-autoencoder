@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-models/__pycache__/
+Variational_AutoEncoder/models/__pycache__/
 Kymatio_Test/
 # C extensions
 *.so

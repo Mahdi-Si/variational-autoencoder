@@ -1,13 +1,10 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
-import math
-from models.encoder import LSTMEncoder, ConvLinEncoder
-from models.decoder import LSTMDecoder, ConvLinDecoder
+from Variational_AutoEncoder.models.encoder import LSTMEncoder, ConvLinEncoder
+from Variational_AutoEncoder.models.decoder import LSTMDecoder, ConvLinDecoder
 import numpy as np
 
-from .utils import plot_scattering, \
-    EncoderProjection, \
+from .misc import EncoderProjection, \
     DecoderProjection, \
     ScatteringNet
 

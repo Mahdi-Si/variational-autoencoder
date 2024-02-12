@@ -6,12 +6,32 @@ import torch.nn as nn
 import torchvision
 import numpy as np
 from kymatio.torch import Scattering1D
+import pickle
+from scipy.signal import decimate
+
+
+
+def normalize_data(seq_list, min_val, max_val):
+    # todo there could be a better way to do normalization in the pipline
+    range_val = max_val - min_val
+    for dict_item in seq_list:
+        dict_item['fhr'] = [((x - min_val) / range_val) for x in dict_item['fhr']]
+
+
+def prepare_data(file_path=None, do_decimate=True):
+    with open(file_path, 'rb') as input_file:
+        dict_list = pickle.load(input_file)
+    if do_decimate:
+        for dict_item in dict_list:
+            dict_item['fhr'] = decimate(dict_item['fhr'], 16).tolist()
+    return dict_list
 
 
 def plot_scattering(signal=None, Sx=None, meta=None, do_plot_rec=False, Sxr=None, plot_dir=None, tag=''):
     '''
     Get fhr and scattering transfrom of it (selected orders) and plot them
     you need the meta of the model as well
+    :param signal:
     :param x_transformed:
     :return:
     '''
@@ -105,57 +125,3 @@ def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=
     ax[1].grid(True)
     ax[2].grid(True)
     plt.savefig(plot_dir + '/' + tag + '_' + '_st.png', bbox_inches='tight', orientation='landscape')
-
-
-class EncoderProjection(nn.Module):
-    def __init__(self, seq_len, hidden_dim, latent_dim):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(seq_len, hidden_dim),
-            # nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            # nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, latent_dim))
-
-    def forward(self, x):
-        return self.model(x)
-
-
-class DecoderProjection(nn.Module):
-    def __init__(self, latent_dim, seq_len):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, seq_len),
-            nn.ReLU(),
-            nn.Linear(seq_len, seq_len),
-            nn.ReLU(),
-            nn.Linear(seq_len, seq_len))
-
-    def forward(self, x):
-        return self.model(x)
-
-
-class ScatteringNet(nn.Module):
-    def __init__(self, J, Q, T, shape):
-        super(ScatteringNet, self).__init__()
-        self.scat = Scattering1D(J=J, Q=Q, T=T, shape=shape)
-
-    def forward(self, x):
-        # x = x.permute(0, 2, 1)  # Equivalent to Permute in TensorFlow
-        # x_tensor = torch.tensor(x, dtype=torch.float32)
-        x = x.unsqueeze(2)
-        x = x.permute(0, 2, 1)
-
-        x = x.contiguous()
-        return self.scat(x)
-
-    def meta(self):
-        return self.scat.meta()
-
-
-def reparameterize(mu, logvar):
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    return mu + eps * std
