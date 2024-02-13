@@ -19,9 +19,8 @@ model_config:
 
 
 folders_config:
-  out_dir_base: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/runs/variational-autoencoder
-
+  out_dir_base: ./runs
 dataset_config:
-    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset
-    stat_path: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/log_stats.npy
+    dataset_dir: ./datasets/dataset_folder
+    stat_path: ./
 
