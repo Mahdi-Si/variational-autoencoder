@@ -18,7 +18,7 @@ class VAE(nn.Module):
         self.enc_hidden_dim = enc_hidden_dim
         self.latent_dim = latent_size
         self.num_LSTM_layers = num_LSTM_layers
-        self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=4800)
+        self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=2400)
         self.encoder = LSTMEncoder(input_dim=self.input_dim, hidden_size=self.enc_hidden_dim,
                                    hidden_sizes=[50, 10, 5], num_layers=num_LSTM_layers,
                                    latent_dim=self.latent_dim)
@@ -81,10 +81,10 @@ class VAE_linear(nn.Module):
         self.encoder = ConvLinEncoder(seq_len=self.input_seq_size,
                                       latent_dim=self.latent_dim)
 
-        self.linear_mean = nn.Linear(90, 90)
-        self.linear_logvar = nn.Linear(90, 90)
+        self.linear_mean = nn.Linear(70, 70)
+        self.linear_logvar = nn.Linear(70, 70)
 
-        self.decoder = ConvLinDecoder(latent_dim=60)
+        self.decoder = ConvLinDecoder(latent_dim=70)
 
 
     def reparameterize(self, mu, logvar):

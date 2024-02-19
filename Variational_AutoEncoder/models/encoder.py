@@ -9,22 +9,24 @@ class ConvLinEncoder(nn.Module):
     def __init__(self, seq_len, latent_dim):
         super(ConvLinEncoder, self).__init__()
         self.linear_input = nn.Linear(150, 150)
-        self.conv1 = nn.Conv1d(1, 2, 3, stride=2, padding=1)
+        self.conv1 = nn.Conv1d(1, 2, 10, stride=2, padding=1)
         self.conv2 = nn.Conv1d(2, 4, 3, stride=2, padding=1)
         # self.batch2 = nn.BatchNorm1d(4)
         self.conv3 = nn.Conv1d(4, 8, 3, stride=2, padding=1)
-        self.linear1 = nn.Linear(152, 100)  # todo check this
-        self.linear2 = nn.Linear(100, 90)
+        self.linear1 = nn.Linear(144, 100)  # todo check this
+        self.linear2 = nn.Linear(100, 70)
+        self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, x):
-        x = F.relu(self.linear_input(x))
-        x = F.relu(self.conv1(x))
+        x = F.elu(self.linear_input(x))
+        x = F.elu(self.conv1(x))
         # x = F.relu(self.batch2(self.conv2(x)))
-        x = F.relu((self.conv2(x)))
-        x = F.relu(self.conv3(x))
+        x = F.elu((self.conv2(x)))
+        x = F.elu(self.conv3(x))
         x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
+        x = F.elu(self.linear1(x))
+        x = self.dropout(x)
+        x = F.elu(self.linear2(x))
         return x
 
 
@@ -102,8 +104,8 @@ class LSTMEncoder(nn.Module):
         :param x: input time series data (batch_size, sequence_length, input_size)
         :return: latent space mean and log variance
         """
-        # lstm_out, (hidden, cells) = self.lstm(x)
-        # lstm_out = x
+        lstm_out, (hidden, cells) = self.lstm(x)
+        lstm_out = x
         # for lstm in self.lstm_layers:
         #     lstm_out, _ = lstm(lstm_out)
         # output = self.batch_norm(output.permute(0, 2, 1))

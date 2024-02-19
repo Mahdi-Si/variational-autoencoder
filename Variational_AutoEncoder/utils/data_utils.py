@@ -10,6 +10,25 @@ import pickle
 from scipy.signal import decimate
 
 
+def calculate_stats(loader):
+    mean = 0.0
+    std = 0.0
+    total_samples = 0
+
+    for data in loader:
+        # Assuming data shape is [batch_size, channels, ...]
+        data = data.unsqueeze(1)
+        batch_samples = data.size(0)
+        data = data.view(batch_samples, data.size(1), -1)
+        mean += data.mean(2).sum(0)
+        std += data.std(2).sum(0)
+        total_samples += batch_samples
+
+    mean /= total_samples
+    std /= total_samples
+
+    return mean, std
+
 
 def normalize_data(seq_list, min_val, max_val):
     # todo there could be a better way to do normalization in the pipline
@@ -27,16 +46,12 @@ def prepare_data(file_path=None, do_decimate=True):
     return dict_list
 
 
-def plot_scattering(signal=None, Sx=None, meta=None, do_plot_rec=False, Sxr=None, plot_dir=None, tag=''):
-    '''
-    Get fhr and scattering transfrom of it (selected orders) and plot them
-    you need the meta of the model as well
-    :param signal:
-    :param x_transformed:
-    :return:
-    '''
-    signal = signal.cpu().detach().numpy()
-    Sx = Sx.cpu().detach().numpy()
+def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
+                    Sxr=None, plot_dir=None, tag=''):
+    if torch.is_tensor(signal) and signal.is_cuda:
+        signal = signal.cpu().detach().numpy()
+    if torch.is_tensor(Sx) and Sx.is_cuda:
+        Sx = Sx.cpu().detach().numpy()
     Fs = 4
     Q = 1
     J = 11
@@ -46,47 +61,89 @@ def plot_scattering(signal=None, Sx=None, meta=None, do_plot_rec=False, Sxr=None
     log_eps = 1e-3
     dtype = np.float32
     SINGLE_BATCH_SIZE = 1
-    N = 4800
-    if do_plot_rec:
-        N_ROWS = 3
+    N = len(signal)
+    if Sxr is not None:
+        # N_ROWS = 3
+        N_ROWS = len(plot_order) + 4
     else:
-        N_ROWS = 2
-    t = np.linspace(0, 20 * 60, len(signal))
+        # N_ROWS = 2
+        N_ROWS = len(plot_order) + 1
 
     t_in = np.arange(0, N) / Fs
 
     cmstr = 'Blues'
     plt.set_cmap(cmstr)
-    plt.rcParams.update({'font.size': 4, 'axes.titlesize': 4, 'axes.labelsize': 4})
+    plt.rcParams.update({'font.size': 12, 'axes.titlesize': 8, 'axes.labelsize': 8})
     i_row = 0
 
-    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(4, 6),
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(14, 16),
                            gridspec_kw={"width_ratios": [40, 1]})
-
+    ax[i_row, 1].set_axis_off()
     ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
 
-    i_row += 1
-    imgplot = ax[i_row, 0].imshow(np.log(Sx + log_eps), aspect='auto',
-                                  extent=[0, N / Fs, Sx.shape[0], 0])
-    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-    ax[i_row, 0].set_xticklabels([])
-    ax[i_row, 0].set_ylabel('Order 1')
-    fig.colorbar(imgplot, cax=ax[i_row, 1])
 
-    if do_plot_rec:
+    for order in plot_order:
+        if isinstance(order, int):
+            i_row += 1
+            order_i = np.where(meta['order'] == order)
+            x = Sx[:, order_i, :].squeeze()
+            if order == 0:
+                ax[i_row, 0].plot(x.squeeze(), linewidth=0.5)
+                ax[i_row, 1].set_axis_off()
+            else:
+                # imgplot = ax[i_row, 0].imshow(np.log(x + log_eps), aspect='auto',
+                #                               extent=[0, N / Fs, Sx.shape[0], 0])
+                imgplot = ax[i_row, 0].imshow(x, aspect='auto')
+                ax[i_row, 1].set_axis_on()
+                fig.colorbar(imgplot, cax=ax[i_row, 1])
+            ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+            ax[i_row, 0].set_xticklabels([])
+            ax[i_row, 0].set_ylabel(f'Order {order}')
+        elif isinstance(order, tuple):
+            i_row += 1
+            order_i = np.where(np.isin(meta['order'], order))
+            x = Sx[:, order_i, :].squeeze()
+            # imgplot = ax[i_row, 0].imshow(np.log(x + log_eps), aspect='auto',
+            #                               extent=[0, N / Fs, Sx.shape[0], 0])
+            imgplot = ax[i_row, 0].imshow(x, aspect='auto')
+            ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+            ax[i_row, 0].set_xticklabels([])
+            ax[i_row, 0].set_ylabel(f'Order {order}')
+            ax[i_row, 1].set_axis_on()
+            fig.colorbar(imgplot, cax=ax[i_row, 1])
+
+    if Sxr is not None:
         i_row += 1
-        Sxr = Sxr.cpu().detach().numpy()
+        if torch.is_tensor(Sx) and Sxr.is_cuda:
+            Sxr = Sxr.cpu().detach().numpy()
+        Sxr = Sxr.transpose(1, 0)
+
+        ax[i_row, 0].plot(Sxr[0, :], linewidth=0.5)
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].autoscale(enable=True, axis='x reconstructed', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('Reconstructed order 0')
+
+        i_row += 1
+        imgplot = ax[i_row, 0].imshow(np.log(Sxr[1:, :] + log_eps), aspect='auto',
+                                      extent=[0, N / Fs, Sxr.shape[0], 0])
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('Reconstructed order 1')
+        ax[i_row, 1].set_axis_on()
+        fig.colorbar(imgplot, cax=ax[i_row, 1])
+
+        i_row += 1
         imgplot = ax[i_row, 0].imshow(np.log(Sxr + log_eps), aspect='auto',
                                       extent=[0, N / Fs, Sxr.shape[0], 0])
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
-        ax[i_row, 0].set_ylabel('Order 1')
+        ax[i_row, 0].set_ylabel('Reconstructed order 1 and 0')
+        ax[i_row, 1].set_axis_on()
         fig.colorbar(imgplot, cax=ax[i_row, 1])
-
-
 
     cmstr = 'bwr'
     plt.set_cmap(cmstr)
@@ -94,8 +151,8 @@ def plot_scattering(signal=None, Sx=None, meta=None, do_plot_rec=False, Sxr=None
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '_st.png', bbox_inches='tight', orientation='landscape')
-
+    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=900)
+    plt.close(fig)
 
 def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=''):
     import matplotlib as mpl
@@ -125,3 +182,4 @@ def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=
     ax[1].grid(True)
     ax[2].grid(True)
     plt.savefig(plot_dir + '/' + tag + '_' + '_st.png', bbox_inches='tight', orientation='landscape')
+    plt.close(fig)

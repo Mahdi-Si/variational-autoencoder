@@ -8,28 +8,29 @@ class ConvLinDecoder(nn.Module):
 
     def __init__(self, latent_dim):
         super().__init__()
-        self.linear2 = nn.Linear(90, 100)
-        self.linear1 = nn.Linear(100, 152)
-
+        self.linear2 = nn.Linear(70, 100)
+        self.linear1 = nn.Linear(100, 144)
+        self.dropout = nn.Dropout(p=0.1)
         self.unflatten = nn.Unflatten(dim=1, unflattened_size=(128, 8, 19))
 
         # Inverse of the encoder's convolutional layers
-        self.convT3 = nn.ConvTranspose1d(8, 4, 3, stride=2, padding=0, output_padding=1)  # Adjust kernel size, stride, padding if necessary
+        self.convT3 = nn.ConvTranspose1d(8, 4, 3, stride=2, padding=1, output_padding=1)  # Adjust kernel size, stride, padding if necessary
         # self.batch2 = nn.BatchNorm1d(2)
-        self.convT2 = nn.ConvTranspose1d(4, 2, 3, stride=2, padding=0, output_padding=1)
-        self.convT1 = nn.ConvTranspose1d(2, 1, 3, stride=2, padding=0, output_padding=1)
-        self.linear_out = nn.Linear(166, 150)
+        self.convT2 = nn.ConvTranspose1d(4, 2, 3, stride=2, padding=1, output_padding=1)
+        self.convT1 = nn.ConvTranspose1d(2, 1, 10, stride=2, padding=1, output_padding=1)
+        self.linear_out = nn.Linear(151, 150)
 
     def forward(self, x):
-        x = F.relu(self.linear2(x))
-        x = F.relu(self.linear1(x))
-        x = x.view(-1, 8, 19)
+        x = F.elu(self.linear2(x))
+        x = F.elu(self.linear1(x))
+        x = self.dropout(x)
+        x = x.view(-1, 8, 18)
         # x = self.unflatten(x)
-        x = F.relu(self.convT3(x))
+        x = F.elu(self.convT3(x))
         # x = F.relu(self.batch2(self.convT2(x)))
-        x = F.relu((self.convT2(x)))
-        x = F.relu(self.convT1(x))
-        x = F.relu(self.linear_out(x))
+        x = F.elu((self.convT2(x)))
+        x = F.elu(self.convT1(x))
+        x = F.elu(self.linear_out(x))
         # Example: reshape to match expected input of convT3, adjust 37 accordingly
         return x
 

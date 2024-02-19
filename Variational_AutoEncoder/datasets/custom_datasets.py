@@ -35,14 +35,15 @@ class SignalDataset(Dataset):
 
 
 class JsonDatasetPreload(Dataset):
-    def __init__(self, json_folder_path):
+    def __init__(self, json_folder_path, mean=None, std=None):
         self.data_files = [os.path.join(json_folder_path, file) for file in os.listdir(json_folder_path) if
                            file.endswith('.json')]
         self.samples = []
+        self.mean = mean
+        self.std = std
 
         # Load data
         for file_path in self.data_files:
-            print(file_path)
             with open(file_path, 'r') as file:
                 data = json.load(file)
                 # Assuming each file contains a single sample for simplicity
@@ -52,6 +53,7 @@ class JsonDatasetPreload(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
+        # todo check how to normalize fhr + UP
         sample_data = self.samples[idx]
         # Extracting the `fhr` data and possibly other information
         fhr = torch.tensor(sample_data['fhr'])
@@ -59,6 +61,9 @@ class JsonDatasetPreload(Dataset):
         target = torch.tensor(sample_data['target'])
         sample_weight = torch.tensor(sample_data['sample_weights'])
         # return fhr, target, sample_weight
+        if self.mean is not None and self.std is not None:
+            # fhr = (fhr - self.mean.view(1, -1)) / self.std.view(1, -1) # for fhr + up
+            fhr = (fhr - self.mean) / self.std
         return fhr
 
 

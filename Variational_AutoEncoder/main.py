@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from Variational_AutoEncoder.utils.data_utils import plot_original_reconstructed
 import os
-import json
+from models.misc import VAELoss
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Utils ----------------------------------------------------------------------------------------------------------------
@@ -40,6 +40,11 @@ def loss_function(x, x_hat, mean, log_var):
     return reproduction_loss + (0.001 * kld)
 
 
+# Function to update the learning rate of the optimizer
+def update_learning_rate(optimizer, lr):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
 
 def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train_plot_dir=None, epoch_num=None):
     train_iterator = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", leave=False)
@@ -57,12 +62,13 @@ def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train
         optimizer.step()
         loss_train_per_batch.append(total_loss.item())
         train_iterator.set_postfix(loss=total_loss.item())
-        if epoch_num > 500:
+        if (epoch_num > 0) or (epochs_num == 10):
             if batch_idx % 100 == 0:
+                idx = np.random.randint(0, len(original_x)-1, 1)
                 # plot_scattering(signal=batch_data[0], Sx=original_x[0].permute(1, 0), Sxr=reconstructed_x[0],
                 #                 do_plot_rec=True, tag=f'train_{epoch_num}_', plot_dir=train_plot_dir)
-                plot_original_reconstructed(original_x=original_x[0].cpu().detach().numpy(),
-                                            reconstructed_x=reconstructed_x[0].cpu().detach().numpy(),
+                plot_original_reconstructed(original_x=original_x[idx[0]].cpu().detach().numpy(),
+                                            reconstructed_x=reconstructed_x[idx[0]].cpu().detach().numpy(),
                                             plot_dir=train_plot_dir, tag=f'train_{epoch_num}_{batch_idx}_')
     loss_train = np.mean(loss_train_per_batch)
     train_iterator.set_postfix(loss=loss_train)
@@ -86,10 +92,10 @@ def test(model=None, loss_fn=None, valid_dataloader=None, validation_plot_dir=No
                     indices = torch.randperm(original_x.size(0))[:5]
                     original_x_sampled = original_x[indices]
                     reconstructed_x_sampled = reconstructed_x[indices]
-                    plt_c = 0
-                    for i in range(original_x_sampled.size(0)):
-                        original_x_selected = original_x_sampled[i]
-                        reconstructed_x_selected = reconstructed_x_sampled[i]
+                    selected_idx = np.random.randint(0, len(original_x)-1, 5)
+                    for i in selected_idx:
+                        # original_x_selected = original_x_sampled[i]
+                        # reconstructed_x_selected = reconstructed_x_sampled[i]
                         # plot_scattering(signal=batch_data[0], Sx=original_x[0].permute(1, 0), Sxr=reconstructed_x[0],
                         #                 do_plot_rec=True, tag=f'test_{epoch_num}_{i}_', plot_dir=validation_plot_dir)
                         plot_original_reconstructed(original_x=original_x[i].cpu().detach().numpy(),
@@ -118,22 +124,25 @@ def test(model=None, loss_fn=None, valid_dataloader=None, validation_plot_dir=No
 
 if __name__ == "__main__":
     # read config file -------------------------------------------------------------------------------------------------
-    config_file_path = r'config_arguments.yaml'
+    config_file_path = r'C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\variational-autoencoder\Variational_AutoEncoder\config_arguments.yaml'
     with open(config_file_path, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
     print(yaml.dump(config, sort_keys=False, default_flow_style=False))
-    print('==' * 100)
+    print('==' * 50)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     # setup configs ----------------------------------------------------------------------------------------------------
 
     # creating the corresponding folders and paths ---------------------------------------------------------------------
     now = datetime.now()
-    run_date = now.strftime("%Y-%m-%d_%H-%M")
+    run_date = now.strftime("%Y-%m-%d---[%H-%M]")
+    experiment_tag = config['general_config']['tag']
     output_base_dir = os.path.normpath(config['folders_config']['out_dir_base'])
-    train_results_dir = os.path.join(output_base_dir, run_date, 'train_results')
-    model_checkpoint_dir = os.path.join(output_base_dir, run_date, 'model_checkpoints')
-    folders_list = [output_base_dir, train_results_dir, model_checkpoint_dir]
+    base_folder = f'{run_date}-{experiment_tag}'
+    train_results_dir = os.path.join(output_base_dir, base_folder, 'train_results')
+    test_results_dir = os.path.join(output_base_dir, base_folder, 'test_results')
+    model_checkpoint_dir = os.path.join(output_base_dir, base_folder, 'model_checkpoints')
+    folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir]
     for folder in folders_list:
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -169,6 +178,7 @@ if __name__ == "__main__":
     train_size = int(0.9 * dataset_size)
     test_size = dataset_size - train_size
 
+    print(f'Train size: {train_size} \n Test size: {test_size}')
     # k_folds = 5
     # kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
     # for fold, (train_index, test_index) in enumerate(kf.split(fhr_healthy_dataset)):
@@ -179,7 +189,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
-    print('==' * 100)
+    print('==' * 50)
     # fhr_hie_dataset = FHRDataset(hie_list[0:10])
     # hie_dataloader = DataLoader(fhr_hie_dataset, batch_size=1, shuffle=False)
 
@@ -191,7 +201,7 @@ if __name__ == "__main__":
     dec_hidden_dim = config['model_config']['VAE_model']['decoder_hidden_dim']
     enc_hidden_dim = config['model_config']['VAE_model']['encoder_hidden_dim']
 
-    max_iter = config['general_config']['max_iter']
+    epochs_num = config['general_config']['epochs']
     lr = config['general_config']['lr']
     # model ------------------------------------------------------------------------------------------------------------
     # VAE_model = VAE(
@@ -204,18 +214,23 @@ if __name__ == "__main__":
     # )
     VAE_model = VAE_linear(input_seq_size=300, latent_dim=120)
     print(f'Model:  \n {VAE_model}')
-    print('==' * 100)
+    print('==' * 50)
     VAE_model.to(device)
     params = VAE_model.parameters()
     trainable_params = sum(p.numel() for p in VAE_model.parameters() if p.requires_grad)
     print(f'Trainable params: {trainable_params}')
-    print('==' * 100)
+    print('==' * 50)
     optimizer = torch.optim.Adam(VAE_model.parameters(), lr=lr, weight_decay=0)
-    epochs = tqdm(range(max_iter // len(train_loader) + 1))
+    epochs = tqdm(range(epochs_num))
+
     vae_loss_re = VAELoss()
     train_loss_list = []
     test_loss_list = []
     for epoch in epochs:
+        if epoch > 1500:
+            update_learning_rate(optimizer, 0.0001)
+        else:
+            update_learning_rate(optimizer, 0.001)
         loss_train = train(
             model=VAE_model,
             optimizer=optimizer,
@@ -231,7 +246,7 @@ if __name__ == "__main__":
             model=VAE_model,
             loss_fn=vae_loss_re,
             valid_dataloader=test_loader,
-            validation_plot_dir=train_results_dir,
+            validation_plot_dir=test_results_dir,
             epoch_num=epoch
         )
 
