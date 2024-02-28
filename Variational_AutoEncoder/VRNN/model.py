@@ -23,16 +23,30 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 EPS = 1e-3
 
 
-class CustomTanh(nn.Module):
+class CustomTanhSim(nn.Module):
     def __init__(self):
-        super(CustomTanh, self).__init__()
+        super(CustomTanhSim, self).__init__()
 
     def forward(self, x):
-        # Apply the Tanh function
-        tanh = torch.tanh(x)
-        # Scale the output from -1 to 1 to -5 to 5
-        scaled = tanh * 5
-        return scaled
+        # Apply the Tanh activation
+        x = torch.tanh(x)
+        # Scale the output to the range [-5, +5]
+        x = x * 5
+        return x
+
+
+class CustomTanh(nn.Module):
+    def __init__(self, min_val=-5, max_val=5):
+        super(CustomTanh, self).__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def forward(self, x):
+        # Apply Tanh
+        x = torch.tanh(x)
+        # Scale to the new range
+        x = x * (self.max_val - self.min_val) / 2 + (self.max_val + self.min_val) / 2
+        return x
 
 
 class VRNN(nn.Module):
@@ -91,8 +105,8 @@ class VRNN(nn.Module):
         #self.dec_mean = nn.Linear(h_dim, x_dim)
         self.dec_mean = nn.Sequential(
             nn.Linear(h_dim, x_dim),
-            CustomTanh()
-            # nn.Tanh()
+            nn.ReLU(),
+            nn.Linear(x_dim, x_dim)
         )
 
         #recurrence
@@ -165,8 +179,8 @@ class VRNN(nn.Module):
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
             #computing losses
             kld_loss += self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
-            #nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
-            nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
+            nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
+            # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
 
 
             all_enc_std.append(enc_std_t)
@@ -244,5 +258,9 @@ class VRNN(nn.Module):
         return - torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
 
 
+    # def _nll_gauss(self, mean, std, x):
+    #     return torch.sum(torch.log(std + EPS) + torch.log(2 * torch.pi)/2 + (x - mean).pow(2)/(2*std.pow(2)))
+
     def _nll_gauss(self, mean, std, x):
-        return torch.sum(torch.log(std + EPS) + torch.log(2*torch.pi)/2 + (x - mean).pow(2)/(2*std.pow(2)))
+        pi_tensor = torch.tensor(2 * torch.pi, device=std.device, dtype=std.dtype)  # Convert to tensor
+        return torch.sum(torch.log(std + EPS) + torch.log(pi_tensor) / 2 + (x - mean).pow(2) / (2 * std.pow(2)))

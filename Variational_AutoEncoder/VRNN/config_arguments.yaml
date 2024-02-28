@@ -15,7 +15,7 @@ model_config:
     input_dim: 13
     decoder_hidden_dim: 1
     encoder_hidden_dim: 50
-    latent_size: 9
+    latent_size: 6
     num_LSTM_layers: 3
 
 
@@ -25,4 +25,4 @@ folders_config:
 dataset_config:
     dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset
     stat_path: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/log_stats.npy
-
+    aux_dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/HIE_Jsons

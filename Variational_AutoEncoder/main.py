@@ -142,6 +142,7 @@ if __name__ == "__main__":
     train_results_dir = os.path.join(output_base_dir, base_folder, 'train_results')
     test_results_dir = os.path.join(output_base_dir, base_folder, 'test_results')
     model_checkpoint_dir = os.path.join(output_base_dir, base_folder, 'model_checkpoints')
+    aux_dir = os.path.join(output_base_dir, base_folder, 'aux_test_HIE')
     folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir]
     for folder in folders_list:
         if not os.path.exists(folder):

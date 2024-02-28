@@ -106,8 +106,6 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     
 
 def test(epoch=None, model=None, plot_dir=None, test_loader=None):
-    """uses test data to evaluate 
-    likelihood of the model"""
     if torch.cuda.is_available():
         device = torch.device('cuda')
         torch.cuda.empty_cache()
@@ -150,12 +148,38 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None):
     return mean_kld_loss + mean_nll_loss, mean_rec_loss
 
 
+def aux_hie_test(model=None, dataloader=None, results_dir=None):
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        torch.cuda.empty_cache()
+    else:
+        device = torch.device('cpu')
+    mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0
+    model.eval()
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            data = data.to(device)
+            rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(data)
+            mean_kld_loss += kld_loss.item()
+            mean_nll_loss += nll_loss.item()
+            mean_rec_loss += rec_loss.item()   # dec_mean -> list 150 of (256, 13) tensor, Sx(150, 256, 13)
+            z_latent_ = torch.stack(z_latent, dim=2)  # (256, 9, 150)
+            dec_mean_ = torch.stack(dec_mean, dim=2)
+            Sx = Sx.permute(1, 2, 0)  # (256, 13, 150)
+            selected_idx = np.random.randint(0, data.shape[0], 15)
+            for idx in selected_idx:
+                selected_signal = data[idx].detach().cpu().numpy()
+                Sx_selected = Sx[idx].detach().cpu().numpy()
+                dec_mean_selected = dec_mean_[idx].detach().cpu().numpy()
+                z_latent_selected = z_latent_[idx].detach().cpu().numpy()
+                plot_scattering_v2(signal=selected_signal, Sx=Sx_selected, meta=meta, Sxr=dec_mean_selected,
+                                   z_latent=z_latent_selected, plot_dir=results_dir, tag=f'Aux_test_{i}_{idx}')
+
+
 if __name__ == '__main__':
     config_file_path = r'config_arguments.yaml'
     with open(config_file_path, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
-    print(yaml.dump(config, sort_keys=False, default_flow_style=False))
-    print('==' * 50)
 
     now = datetime.now()
     run_date = now.strftime("%Y-%m-%d--[%H-%M]-")
@@ -165,7 +189,8 @@ if __name__ == '__main__':
     train_results_dir = os.path.join(output_base_dir, base_folder, 'train_results')
     test_results_dir = os.path.join(output_base_dir, base_folder, 'test_results')
     model_checkpoint_dir = os.path.join(output_base_dir, base_folder, 'model_checkpoints')
-    folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir]
+    aux_results_dir = os.path.join(output_base_dir, base_folder, 'aux_test_results')
+    folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir, aux_results_dir]
     for folder in folders_list:
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -179,8 +204,11 @@ if __name__ == '__main__':
 
     sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
 
+    print(yaml.dump(config, sort_keys=False, default_flow_style=False))
+    print('==' * 50)
     # Preparing training and testing datasets --------------------------------------------------------------------------
     dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
     batch_size = config['general_config']['batch_size']['train']
 
@@ -196,6 +224,7 @@ if __name__ == '__main__':
     # normalize_data(healthy_list, min_fhr, max_fhr)
     # normalize_data(hie_list, min_fhr, max_fhr)
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
+    fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
 
     with open(stat_path, 'rb') as f:
@@ -216,8 +245,9 @@ if __name__ == '__main__':
     #     test_subsampler = Subset(fhr_healthy_dataset, test_index)
 
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False, num_workers=4)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
     print('==' * 50)
     # fhr_hie_dataset = FHRDataset(hie_list[0:10])
@@ -266,7 +296,7 @@ if __name__ == '__main__':
     print(f'Trainable params: {trainable_params}')
     print('==' * 50)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[500, 2500])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[200, 2000])
     train_loss_list = []
     train_rec_loss_list = []
     test_rec_loss_list = []
@@ -311,3 +341,4 @@ if __name__ == '__main__':
             pickle.dump(loss_dict, file)
         plot_loss_dict(loss_dict=loss_dict, epoch_num=epoch, plot_dir=train_results_dir)
 
+    aux_hie_test(model=model, dataloader=aux_hie_loader, results_dir=aux_results_dir)
