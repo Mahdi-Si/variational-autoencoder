@@ -54,6 +54,9 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         torch.cuda.empty_cache()
     else:
         device = torch.device('cpu')
+    for param_group in optimizer.param_groups:
+        current_learning_rate = param_group['lr']
+        print(f'Learning Rate; {current_learning_rate}')
     train_loss = 0
     reconstrucion_loss = 0
     plt.close('all')
@@ -296,7 +299,7 @@ if __name__ == '__main__':
     print(f'Trainable params: {trainable_params}')
     print('==' * 50)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[200, 2000])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 2000])
     train_loss_list = []
     train_rec_loss_list = []
     test_rec_loss_list = []

@@ -6,7 +6,7 @@ general_config:
   validation_frequency: 2
   epochs: 2500
   batch_size:
-    train: 128
+    train: 512
     test: 1
 
 model_config:
@@ -15,7 +15,7 @@ model_config:
     input_dim: 13
     decoder_hidden_dim: 1
     encoder_hidden_dim: 50
-    latent_size: 6
+    latent_size: 8
     num_LSTM_layers: 3
 
 

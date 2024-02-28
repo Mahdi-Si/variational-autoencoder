@@ -234,7 +234,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
 
     i_row += 1
     imgplot = ax[i_row, 0].imshow(z_latent, aspect='auto', norm="symlog",
-                                  extent=[0, N / Fs, Sx.shape[0], 0])
+                                  extent=[0, N / Fs, z_latent.shape[0], 0])
     ax[i_row, 1].set_axis_on()
     fig.colorbar(imgplot, cax=ax[i_row, 1])
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
