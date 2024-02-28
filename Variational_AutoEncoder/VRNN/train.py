@@ -1,12 +1,7 @@
 import math
-import torch
 import torch.nn as nn
 import torch.utils
 import torch.utils.data
-from tqdm import tqdm
-import psutil
-import GPUtil
-
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import matplotlib.pyplot as plt 
@@ -21,12 +16,11 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import torch.nn.functional as F
-import torch.nn as nn
 import numpy as np
 
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
-    calculate_stats
+    calculate_stats, plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -61,78 +55,54 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     else:
         device = torch.device('cpu')
     train_loss = 0
+    reconstrucion_loss = 0
     plt.close('all')
     train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch}")
-    # for batch_idx, (data) in enumerate(train_loader):
     model.train()
     for batch_idx, data in train_loader_tqdm:
-        #transforming data
         data = data.to(device)
-        # data = data.squeeze().transpose(0, 1)  # (seq, batch, elem)
-        # data = (data - data.min()) / (data.max() - data.min())
-        
-        #forward + backward + optimize
         optimizer.zero_grad()
-        kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta) = model(data)
+        rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(data)
         loss = kld_loss + nll_loss
         loss.backward()
         optimizer.step()
 
         # grad norm clipping, only in pytorch version >= 1.10
         nn.utils.clip_grad_norm_(model.parameters(), clip)
-
+        z_latent = torch.stack(z_latent, dim=2)
         if batch_idx % print_every == 0:
-            message = f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tKLD Loss: {kld_loss.item() / len(data):.6f}\tNLL Loss: {nll_loss.item() / len(data):.6f}'
+            message = f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} \
+            ({100. * batch_idx / len(train_loader):.0f}%)]\tKLD Loss: {kld_loss.item() / len(data):.6f}\tNLL Loss: \
+            {nll_loss.item() / len(data):.6f}'
             tqdm.write(message)
-            # print('Train Epoch: {} [{}/{} ({:.0f}%)]\t KLD Loss: {:.6f} \t NLL Loss: {:.6f}'.format(
-            #     epoch, batch_idx * batch_size, batch_size * (len(train_loader.dataset)//batch_size),
-            #     100. * batch_idx / len(train_loader),
-            #     kld_loss / batch_size,
-            #     nll_loss / batch_size))
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\t KLD Loss: {:.6f} \t NLL Loss: {:.6f}'.format(
+                epoch, batch_idx * batch_size, batch_size * (len(train_loader.dataset)//batch_size),
+                100. * batch_idx / len(train_loader),
+                kld_loss / batch_size,
+                nll_loss / batch_size))
             one_data = data[10].unsqueeze(0)
-            kld_loss_one, nll_loss_one, _, (dec_mean, dec_std), (Sx, meta) = model(one_data)
+            rec_loss_one, kld_loss_one, nll_loss_one, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(one_data)
+            z_latent = torch.stack(z_latent, dim=2)
             sample = model.sample(torch.tensor(150, device=device))
-            # plt.imshow(sample.to(torch.device('cpu')).numpy())
-
-            # this part is for only order 0 scattering transform and the plots -----------------------------------------
-            # plot_original_reconstructed(scattering_original_one.squeeze(2).detach().cpu().numpy(),
-            #                             sample.detach().cpu().numpy(),
-            #                             plot_dir=plot_dir,
-            #                             tag=f'train_{str(epoch)}_{batch_idx}')
-            # dec_mean_tensor = torch.cat(dec_mean, dim=0).squeeze()  # Remove the unnecessary dimensions
-            # dec_std_tensor = torch.cat(dec_std, dim=0).squeeze()
-            # dec_mean_np = dec_mean_tensor.cpu().detach().numpy()
-            # dec_std_np = dec_std_tensor.cpu().detach().numpy()
-            # dec_variance_np = np.square(dec_std_np)
-            # time_vector = np.arange(len(dec_mean_np))
-            # plt.figure(figsize=(18, 7))
-            # plt.plot(time_vector, dec_mean_np, label='Mean')
-            # plt.plot(time_vector, scattering_original_one.squeeze(2).detach().cpu().numpy(), label='Original Signal')
-            # plt.fill_between(time_vector,
-            #                  dec_mean_np - dec_variance_np,  # Lower bound
-            #                  dec_mean_np + dec_variance_np,  # Upper bound
-            #                  color='blue', alpha=0.1, label='Variance')
-            # plt.xlabel('Time')
-            # plt.ylabel('Signal')
-            # plt.title('Signal with Probability (Mean and Variance)')
-            # plt.legend()
-            # tag = f'train_{str(epoch)}_{batch_idx}_prob'
-            # plt.savefig(plot_dir + '/' + tag + '_' + '_st.png', bbox_inches='tight', orientation='landscape')
-            # plt.close()
-            # this part is for only order 0 scattering transform and the plots -----------------------------------------
-
-            dec_mean_tensor = torch.cat(dec_mean, dim=0).squeeze()  # Remove the unnecessary dimensions
+            dec_mean_tensor = torch.cat(dec_mean, dim=0).squeeze()
             dec_std_tensor = torch.cat(dec_std, dim=0).squeeze()
-            dec_mean_np = dec_mean_tensor.cpu().detach().numpy()
+            dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
             dec_std_np = dec_std_tensor.cpu().detach().numpy()
             dec_variance_np = np.square(dec_std_np)
-            plot_scattering(signal=data[0], plot_order=[0, 1, (0, 1)], Sx=Sx[0], meta=meta, Sxr=dec_mean_np,
-                            plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{batch_idx}_train')
+            # plot_scattering(signal=data[0], plot_order=[0, 1, (0, 1)], Sx=Sx[0], meta=meta, Sxr=dec_mean_np,
+            #                 plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{batch_idx}_train')
+            plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
+                               Sx=Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
+                               meta=meta, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
+                               plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{batch_idx}_train')
         train_loss += loss.item()
-
+        reconstrucion_loss += rec_loss.item()
+    print(f'train loss is ====> {train_loss}')
     print('====> Epoch: {} Average loss: {:.4f}'.format(
         epoch, train_loss / len(train_loader.dataset)))
-    return train_loss
+
+    reconstrucion_loss /= len(train_loader.dataset)
+    return train_loss, reconstrucion_loss
     
 
 def test(epoch=None, model=None, plot_dir=None, test_loader=None):
@@ -143,36 +113,41 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None):
         torch.cuda.empty_cache()
     else:
         device = torch.device('cpu')
-    mean_kld_loss, mean_nll_loss = 0, 0
+    mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0
     model.eval()
     with torch.no_grad():
         for i, data in enumerate(test_loader):
 
             data = data.to(device)
-            # data = data.squeeze().transpose(0, 1)
-            # data = (data - data.min()) / (data.max() - data.min())
 
-            kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta) = model(data)
+            rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(data)
             mean_kld_loss += kld_loss.item()
             mean_nll_loss += nll_loss.item()
+            mean_rec_loss += rec_loss.item()
 
             one_data = data[0].unsqueeze(0)
-            kld_loss_one, nll_loss_one, _, (dec_mean, dec_std), (Sx, meta) = model(one_data)
+            rec_loss_one, kld_loss_one, nll_loss_one, _, (dec_mean, dec_std), (Sx, meta), z_latent_ = model(one_data)
+            z_latent = torch.stack(z_latent_, dim=2)
             sample = model.sample(torch.tensor(150, device=device))
             dec_mean_tensor = torch.cat(dec_mean, dim=0).squeeze()  # Remove the unnecessary dimensions
             dec_std_tensor = torch.cat(dec_std, dim=0).squeeze()
-            dec_mean_np = dec_mean_tensor.cpu().detach().numpy()
+            dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
             dec_std_np = dec_std_tensor.cpu().detach().numpy()
             dec_variance_np = np.square(dec_std_np)
-            plot_scattering(signal=data[0], plot_order=[0, 1, (0, 1)], Sx=Sx[0], meta=meta, Sxr=dec_mean_np,
-                            plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{i}_test')
+            # plot_scattering(signal=data[0], plot_order=[0, 1, (0, 1)], Sx=Sx[0], meta=meta, Sxr=dec_mean_np,
+            #                 plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{i}_test')
+            plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
+                               Sx=Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
+                               meta=meta, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
+                               plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{i}_test')
 
     mean_kld_loss /= len(test_loader.dataset)
     mean_nll_loss /= len(test_loader.dataset)
+    mean_rec_loss /= len(test_loader.dataset)
    
     print('====> Test set loss: KLD Loss = {:.4f}, NLL Loss = {:.4f} '.format(
         mean_kld_loss, mean_nll_loss))
-    return mean_kld_loss + mean_nll_loss
+    return mean_kld_loss + mean_nll_loss, mean_rec_loss
 
 
 if __name__ == '__main__':
@@ -183,7 +158,7 @@ if __name__ == '__main__':
     print('==' * 50)
 
     now = datetime.now()
-    run_date = now.strftime("%Y-%m-%d---[%H-%M]")
+    run_date = now.strftime("%Y-%m-%d--[%H-%M]-")
     experiment_tag = config['general_config']['tag']
     output_base_dir = os.path.normpath(config['folders_config']['out_dir_base'])
     base_folder = f'{run_date}-{experiment_tag}'
@@ -222,9 +197,12 @@ if __name__ == '__main__':
     # normalize_data(hie_list, min_fhr, max_fhr)
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
-    mean_, std_ = calculate_stats(data_loader_complete)
 
-    fhr_healthy_dataset_normalized = JsonDatasetPreload(dataset_dir, mean=mean_, std=std_)
+    with open(stat_path, 'rb') as f:
+        x_mean = np.load(f)
+        x_std = np.load(f)
+
+    log_stat = (x_mean, x_std)
     # fhr_healthy_dataset = FHRDataset(healthy_list)
     dataset_size = len(fhr_healthy_dataset)
     train_size = int(0.9 * dataset_size)
@@ -237,7 +215,7 @@ if __name__ == '__main__':
     #     train_subsampler = Subset(fhr_healthy_dataset, train_index)
     #     test_subsampler = Subset(fhr_healthy_dataset, test_index)
 
-    train_dataset, test_dataset = random_split(fhr_healthy_dataset_normalized, [train_size, test_size])
+    train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
@@ -263,15 +241,15 @@ if __name__ == '__main__':
         device = torch.device('cpu')
 
     # hyperparameters
-    x_dim = 13
-    h_dim = 10
-    z_dim = 100
+    x_dim = input_dim
+    h_dim = 90
+    z_dim = latent_size
     n_layers = 1
-    n_epochs = 2000
+    n_epochs = epochs_num
     clip = 10
-    learning_rate = 1e-3
-    batch_size = 64 #128
-    seed = 128
+    learning_rate = lr
+    batch_size = batch_size  # 128
+    seed = 142
     print_every = 20  # batches
     save_every = 20  # epochs
 
@@ -279,61 +257,57 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     plt.ion()
 
-    # init model + optimizer + datasets
-
-    # train_loader = torch.utils.data.DataLoader(
-    #     datasets.MNIST('data', train=True, download=True,
-    #                    transform=transforms.ToTensor()),
-    #     batch_size=batch_size, shuffle=True)
-    #
-    # test_loader = torch.utils.data.DataLoader(
-    #     datasets.MNIST('data', train=False,
-    #                    transform=transforms.ToTensor()),
-    #     batch_size=batch_size, shuffle=True)
-
-    model = VRNN(x_dim, h_dim, z_dim, n_layers)
-
+    model = VRNN(x_dim, h_dim, z_dim, n_layers, log_stat=log_stat)
     print(f'Model:  \n {model}')
     print('==' * 50)
     model = model.to(device)
+    params = model.parameters()
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'Trainable params: {trainable_params}')
+    print('==' * 50)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[500, 2500])
     train_loss_list = []
+    train_rec_loss_list = []
+    test_rec_loss_list = []
     test_loss_list = []
     for epoch in tqdm(range(1, n_epochs + 1), desc='Epoch:'):
         log_resource_usage()
-        # training + testing
-        train_loss = train(model=model, epoch=epoch, plot_dir=train_results_dir, train_loader=train_loader,
-                           optimizer=optimizer)
-        train_loss_list.append(train_loss)
+        train_loss, train_rec_loss = train(model=model, epoch=epoch, plot_dir=train_results_dir,
+                                           train_loader=train_loader, optimizer=optimizer)
 
-        test_loss = test(epoch=epoch, model=model, plot_dir=test_results_dir, test_loader=test_loader)
+        if len(train_loss_list) > 0:
+            if train_loss <= min(train_loss_list):
+                checkpoint_name = f'VRNN-{epoch}.pth'
+                model_dir = os.path.join(model_checkpoint_dir, checkpoint_name)
+                for file_name in os.listdir(model_checkpoint_dir):
+                    if file_name.endswith('.pth'):
+                        os.remove(os.path.join(model_checkpoint_dir, file_name))
+                torch.save(model.state_dict(), model_dir)
+
+        schedular.step()
+        train_loss_list.append(train_loss)
+        train_rec_loss_list.append(train_rec_loss)
+
+        test_loss, test_rec_loss = test(epoch=epoch, model=model, plot_dir=test_results_dir, test_loader=test_loader)
         test_loss_list.append(test_loss)
+        test_rec_loss_list.append(test_rec_loss)
+
         tqdm.write(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Test Loss = {test_loss:.4f}")
-        # # saving model
+
+        train_loss_min = min(train_loss_list)
+
         # if epoch % save_every == 1:
         #     fn = 'saves/vrnn_state_dict_'+str(epoch)+'.pth'
         #     torch.save(model.state_dict(), fn)
         #     print('Saved model to '+fn)
 
-    fig, ax = plt.subplots(nrows=2, ncols=1)
+        loss_dict = {'train': train_loss_list,
+                     'test': test_loss_list,
+                     'train_rec': train_rec_loss_list,
+                     'test_rec': test_rec_loss_list}
+        loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
+        with open(loss_path, 'wb') as file:
+            pickle.dump(loss_dict, file)
+        plot_loss_dict(loss_dict=loss_dict, epoch_num=epoch, plot_dir=train_results_dir)
 
-    plt.rcParams["font.family"] = "Times New Roman"
-    plt.rcParams["font.size"] = 32
-    plt.rcParams['text.usetex'] = True
-    loss_dict = {'train': train_loss_list, 'test': test_loss_list}
-    loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
-    with open(loss_path, 'wb') as file:
-        pickle.dump(loss_dict, file)
-    t = np.arange(1, n_epochs + 1)
-    print(f'len t is {len(t)} and len train_loss_list is {len(train_loss_list)}')
-    ax[0].autoscale(enable=True, axis='x', tight=True)
-    ax[0].plot(train_loss_list, label='train loss', color='#FF5733',
-               linewidth=1)  # Custom hex color and line thickness
-    ax[1].autoscale(enable=True, axis='x', tight=True)
-    ax[1].plot(test_loss_list, label='test loss', color='#005B41',
-               linewidth=1)  # Custom hex color and line thickness
-    # Adding grid, legend, and labels with specific requirements
-    # ax[0].grid(True)
-    # ax[0].legend()
-    # ax[0].set_xlabel('$\ell_2$')
-    plt.savefig(f'{train_results_dir}/Loss_st.pdf', bbox_inches='tight')

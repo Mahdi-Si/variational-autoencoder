@@ -1,21 +1,21 @@
 general_config:
-  tag: CNN-elu-[10-3-3]-ld70-
-  lr: 0.001
+  tag: VRNN-
+  lr: 0.01
   weight_decay: 0.0
   checkpoint_frequency: 5
   validation_frequency: 2
-  epochs: 2000
+  epochs: 2500
   batch_size:
-    train: 64
+    train: 128
     test: 1
 
 model_config:
   VAE_model:
-    input_size: 300
-    input_dim: 1
+    input_size: 150
+    input_dim: 13
     decoder_hidden_dim: 1
     encoder_hidden_dim: 50
-    latent_size: 150
+    latent_size: 9
     num_LSTM_layers: 3
 
 

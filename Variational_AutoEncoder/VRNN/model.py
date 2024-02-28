@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.utils
 import torch.utils.data
+import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
@@ -18,16 +19,33 @@ inference, prior, and generating models."""
 
 # changing device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-EPS = torch.finfo(torch.float).eps # numerical logs
+# EPS = torch.finfo(torch.float).eps # numerical logs
+EPS = 1e-3
+
+
+class CustomTanh(nn.Module):
+    def __init__(self):
+        super(CustomTanh, self).__init__()
+
+    def forward(self, x):
+        # Apply the Tanh function
+        tanh = torch.tanh(x)
+        # Scale the output from -1 to 1 to -5 to 5
+        scaled = tanh * 5
+        return scaled
+
 
 class VRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, bias=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers, log_stat=None, bias=False):
         super(VRNN, self).__init__()
-
         self.x_dim = x_dim
         self.h_dim = h_dim
         self.z_dim = z_dim
         self.n_layers = n_layers
+        self.x_mean = log_stat[0][1:13]
+        self.x_std = log_stat[1][1:13]
+        self.st0_mean = 140.37047
+        self.st0_std = 18.81198
 
         self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=2400)
 
@@ -73,7 +91,9 @@ class VRNN(nn.Module):
         #self.dec_mean = nn.Linear(h_dim, x_dim)
         self.dec_mean = nn.Sequential(
             nn.Linear(h_dim, x_dim),
-            nn.Sigmoid())
+            CustomTanh()
+            # nn.Tanh()
+        )
 
         #recurrence
         self.rnn = nn.GRU(h_dim + h_dim, h_dim, n_layers, bias)
@@ -83,8 +103,16 @@ class VRNN(nn.Module):
 
         all_enc_mean, all_enc_std = [], []
         all_dec_mean, all_dec_std = [], []
+        all_z_t = []
         kld_loss = 0
         nll_loss = 0
+
+        # Convert numpy arrays to PyTorch tensors and specify dtype
+        x_mean_tensor = torch.tensor(self.x_mean, dtype=torch.float32)
+        x_std_tensor = torch.tensor(self.x_std, dtype=torch.float32)
+
+        x_mean_reshaped = x_mean_tensor.reshape((1, 1, 12, 1)).to(device)
+        x_std_reshaped = x_std_tensor.reshape((1, 1, 12, 1)).to(device)
 
         # scattering transform preprocess ------------------------------------------------------------------------------
         [Sx, Px] = self.transform(x)  # Sx shape(64, 1, 76, 300)
@@ -94,8 +122,14 @@ class VRNN(nn.Module):
         order2 = np.where(meta['order'] == 2)
         combined_orders = np.where((meta['order'] == 0) | (meta['order'] == 1))
         selected_orders = torch.from_numpy(combined_orders[0])
-        # x = Sx[0][combined_orders]
-        x = Sx[:, :, selected_orders, :]
+        selected_orders_t0 = torch.from_numpy(order0[0])
+        selected_orders_t1 = torch.from_numpy(order1[0])
+        # x = Sx[:, :, selected_orders, :]
+        x_t0 = Sx[:, :, selected_orders_t0, :]
+        x_t0_normalized = (x_t0 - self.st0_mean) / self.st0_std
+        x_t1 = Sx[:, :, selected_orders_t1, :]
+        x_t1_normalized = (torch.log(x_t1 + 1e-4) - x_mean_reshaped) / x_std_reshaped
+        x = torch.cat((x_t0_normalized, x_t1_normalized), dim=2)
         # x = x.squeeze(1).permute(0, 2, 1)  # (batch_size, 300, 13)
         x = x.squeeze(1).permute(2, 0, 1)
         scattering_original = x
@@ -129,20 +163,23 @@ class VRNN(nn.Module):
 
             #recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
-
             #computing losses
             kld_loss += self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
             #nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
             nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
 
+
             all_enc_std.append(enc_std_t)
             all_enc_mean.append(enc_mean_t)
             all_dec_mean.append(dec_mean_t)
             all_dec_std.append(dec_std_t)
+            all_z_t.append(z_t)
 
-        return kld_loss, nll_loss, \
+        reconstructed = torch.stack(all_dec_mean, dim=0)
+        rec_loss = F.mse_loss(reconstructed, x, reduction='mean')
+        return rec_loss, kld_loss, nll_loss, \
             (all_enc_mean, all_enc_std), \
-            (all_dec_mean, all_dec_std), (Sx, meta)
+            (all_dec_mean, all_dec_std), (scattering_original, meta), all_z_t
 
 
     def sample(self, seq_len):
@@ -193,6 +230,8 @@ class VRNN(nn.Module):
 
     def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
         """Using std to compute KLD"""
+        std_2 = torch.clamp(std_2, min=1e-9)
+        std_1 = torch.clamp(std_1, min=1e-9)
 
         kld_element =  (2 * torch.log(std_2 + EPS) - 2 * torch.log(std_1 + EPS) + 
             (std_1.pow(2) + (mean_1 - mean_2).pow(2)) /
@@ -201,7 +240,8 @@ class VRNN(nn.Module):
 
 
     def _nll_bernoulli(self, theta, x):
-        return - torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log(1-theta-EPS))
+        theta = torch.clamp(theta, min=1e-9)
+        return - torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
 
 
     def _nll_gauss(self, mean, std, x):
