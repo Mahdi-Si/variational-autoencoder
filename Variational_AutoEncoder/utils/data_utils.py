@@ -256,7 +256,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=200)
+    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
 
 
@@ -273,6 +273,6 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
         ax[i].set_ylabel(key, fontsize=14)
         ax[i].grid()
 
-    plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=100)
 
 

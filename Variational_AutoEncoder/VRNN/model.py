@@ -10,17 +10,36 @@ import matplotlib.pyplot as plt
 from Variational_AutoEncoder.models.misc import ScatteringNet
 from Variational_AutoEncoder.utils.data_utils import plot_scattering
 import numpy as np
-
+from dataclasses import dataclass, field
+from typing import List, Tuple, Dict
 
 """implementation of the Variational Recurrent
 Neural Network (VRNN) from https://arxiv.org/abs/1506.02216
 using unimodal isotropic gaussian distributions for 
 inference, prior, and generating models."""
 
-# changing device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # EPS = torch.finfo(torch.float).eps # numerical logs
 EPS = 1e-3
+
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    torch.cuda.empty_cache()
+else:
+    device = torch.device('cpu')
+
+@dataclass
+class VrnnForward:
+    rec_loss: torch.Tensor = None
+    kld_loss: float = None
+    nll_loss: float = None
+    kld_values: List[torch.Tensor] = None
+    encoder_mean: List[torch.Tensor] = None
+    encoder_std: List[torch.Tensor] = None
+    decoder_mean: List[torch.Tensor] = None
+    decoder_std: List[torch.Tensor] = None
+    Sx: torch.Tensor = None
+    Sx_meta: dict = None
+    z_latent: List[torch.Tensor] = None
 
 
 class CustomTanhSim(nn.Module):
@@ -118,6 +137,7 @@ class VRNN(nn.Module):
         all_enc_mean, all_enc_std = [], []
         all_dec_mean, all_dec_std = [], []
         all_z_t = []
+        all_kld = []
         kld_loss = 0
         nll_loss = 0
 
@@ -161,28 +181,29 @@ class VRNN(nn.Module):
             enc_mean_t = self.enc_mean(enc_t)
             enc_std_t = self.enc_std(enc_t) 
 
-            #prior
+            # prior
             prior_t = self.prior(h[-1])
             prior_mean_t = self.prior_mean(prior_t)
             prior_std_t = self.prior_std(prior_t)
 
-            #sampling and reparameterization
+            # sampling and reparameterization
             z_t = self._reparameterized_sample(enc_mean_t, enc_std_t)
             phi_z_t = self.phi_z(z_t)
 
-            #decoder
+            # decoder
             dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
             dec_mean_t = self.dec_mean(dec_t)
             dec_std_t = self.dec_std(dec_t)
 
-            #recurrence
+            # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
-            #computing losses
-            kld_loss += self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
-            nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
-            # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
+            # computing losses
+            kld_value = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
+            kld_loss += kld_value
+            # nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
+            nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
 
-
+            all_kld.append(kld_value)
             all_enc_std.append(enc_std_t)
             all_enc_mean.append(enc_mean_t)
             all_dec_mean.append(dec_mean_t)
@@ -191,9 +212,36 @@ class VRNN(nn.Module):
 
         reconstructed = torch.stack(all_dec_mean, dim=0)
         rec_loss = F.mse_loss(reconstructed, x, reduction='mean')
-        return rec_loss, kld_loss, nll_loss, \
-            (all_enc_mean, all_enc_std), \
-            (all_dec_mean, all_dec_std), (scattering_original, meta), all_z_t
+        # results = {
+        #     "rec_loss": rec_loss,
+        #     "kld_loss": kld_loss,
+        #     "nll_loss": nll_loss,
+        #     "encoder_mean": all_enc_mean,
+        #     "encoder_std": all_enc_std,
+        #     "decoder_mean": all_dec_mean,
+        #     "decoder_std": all_dec_std,
+        #     "kld_values": all_kld,
+        #     "Sx": scattering_original,
+        #     "Sx_meta": meta,
+        #     "z_latent": all_z_t
+        # }
+        results = VrnnForward(
+            rec_loss=rec_loss,
+            kld_loss=kld_loss,
+            nll_loss=nll_loss,
+            encoder_mean=all_enc_mean,
+            encoder_std=all_enc_std,
+            decoder_mean=all_dec_mean,
+            decoder_std=all_dec_std,
+            kld_values=all_kld,
+            Sx=scattering_original,
+            Sx_meta=meta,
+            z_latent=all_z_t
+        )
+        return results
+        # return rec_loss, kld_loss, nll_loss, \
+        #     (all_enc_mean, all_enc_std), \
+        #     (all_dec_mean, all_dec_std), (scattering_original, meta), all_z_t
 
 
     def sample(self, seq_len):
@@ -236,10 +284,18 @@ class VRNN(nn.Module):
         pass
 
 
-    def _reparameterized_sample(self, mean, std):
-        """using std to sample"""
-        eps = torch.empty(size=std.size(), device=device, dtype=torch.float).normal_()
-        return eps.mul(std).add_(mean)
+    # def _reparameterized_sample(self, mean, std):
+    #     """using std to sample"""
+    #     eps = torch.empty(size=std.size(), device=device, dtype=torch.float).normal_()
+    #     return eps.mul(std).add_(mean)
+
+
+
+    def _reparameterized_sample(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        noise = torch.randn_like(std)
+        z = mu + noise * std
+        return z
 
 
     def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
@@ -247,16 +303,13 @@ class VRNN(nn.Module):
         std_2 = torch.clamp(std_2, min=1e-9)
         std_1 = torch.clamp(std_1, min=1e-9)
 
-        kld_element =  (2 * torch.log(std_2 + EPS) - 2 * torch.log(std_1 + EPS) + 
-            (std_1.pow(2) + (mean_1 - mean_2).pow(2)) /
-            std_2.pow(2) - 1)
-        return	0.5 * torch.sum(kld_element)
-
+        kld_element = (2 * torch.log(std_2 + EPS) - 2 * torch.log(std_1 + EPS) +
+                       (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
+        return 0.5 * torch.sum(kld_element)
 
     def _nll_bernoulli(self, theta, x):
         theta = torch.clamp(theta, min=1e-9)
         return - torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
-
 
     # def _nll_gauss(self, mean, std, x):
     #     return torch.sum(torch.log(std + EPS) + torch.log(2 * torch.pi)/2 + (x - mean).pow(2)/(2*std.pow(2)))
