@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import numpy as np
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
-    calculate_stats, plot_scattering_v2, plot_loss_dict
+    calculate_stats, plot_scattering_v2, plot_loss_dict, plot_averaged_results
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -87,8 +87,8 @@ if __name__ == '__main__':
 
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=14)
-    test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False, num_workers=4)
-    aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False, num_workers=14)
+    aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False, num_workers=14)
     # define model and train it ----------------------------------------------------------------------------------------
     input_size = config['model_config']['VAE_model']['input_size']
     input_dim = config['model_config']['VAE_model']['input_dim']
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     model.eval()
     with torch.no_grad():
         selected_batches = np.random.randint(0, len(test_loader), 10)
-        for i, batched_data in enumerate(test_loader):
+        for i, batched_data in tqdm(enumerate(test_loader), total=len(test_loader)):
             if i in selected_batches:
                 batched_data = batched_data.to(device)   # (batch_size, signal_len)
                 # rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(batched_data)
@@ -137,21 +137,41 @@ if __name__ == '__main__':
                 Sx = results.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
                 selected_idx = np.random.randint(0, batched_data.shape[0], 15)
                 for idx in selected_idx:
-                    selected_signal = batched_data[idx].detach().cpu().numpy()
-                    Sx_selected = Sx[idx].detach().cpu().numpy()
-                    dec_mean_selected = dec_mean_[idx].detach().cpu().numpy()
-                    z_latent_selected = z_latent_[idx].detach().cpu().numpy()
-                    plot_scattering_v2(signal=selected_signal, Sx=Sx_selected, meta=None, Sxr=dec_mean_selected,
-                                       z_latent=z_latent_selected, plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}')
+                    selected_signal = batched_data[idx]
+                    # selected_signal = batched_data[idx].detach().cpu().numpy()
+                    repeated_signal = selected_signal.repeat(2, 1)
+                    results = model(repeated_signal)
+                    Sx = results.Sx.permute(1, 2, 0)[0]
+                    z_latent_ = torch.stack(results.z_latent, dim=2)
+                    kld_values = torch.stack(results.kld_values, dim=2)
+                    z_latent_mean = z_latent_.mean(dim=0)
+                    z_latent_std = z_latent_.std(dim=0)
+                    dec_mean_ = torch.stack(results.decoder_mean, dim=2)
+                    dec_mean_mean = dec_mean_.mean(dim=0)
+                    dec_mean_std = dec_mean_.std(dim=0)
+                    kld_values_mean = kld_values.mean(dim=0)
 
-                    fig, ax = plt.subplots(nrows=z_latent_selected.shape[0], ncols=1, figsize=(20, 36))
-                    i_row = 0
-                    for j in range(z_latent_selected.shape[0]):
-                        ax[i_row].plot(z_latent_selected[j, :], linewidth=1.5)
-                        ax[i_row].autoscale(enable=True, axis='x', tight=True)
-                        ax[i_row].set_xticklabels([])
-                        ax[i_row].set_ylabel(f'latent_dim_{j}')
-                        i_row += 1
+                    plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                                          Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
+                                          Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                          z_latent_mean=z_latent_mean.detach().cpu().numpy(),
+                                          z_latent_std=z_latent_std.detach().cpu().numpy(),
+                                          kld_values=kld_values_mean.detach().cpu().numpy(),
+                                          plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}_average')
+                    plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                                       Sx=Sx.detach().cpu().numpy(), meta=None,
+                                       Sxr=dec_mean_mean.detach().cpu().numpy(),
+                                       z_latent=z_latent_mean.detach().cpu().numpy(),
+                                       plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}')
 
-                    plt.savefig(inference_results_dir + '/' + f'inference_{i}_{idx}' + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
-                    plt.close(fig)
+                    # fig, ax = plt.subplots(nrows=z_latent_selected.shape[0], ncols=1, figsize=(20, 36))
+                    # i_row = 0
+                    # for j in range(z_latent_selected.shape[0]):
+                    #     ax[i_row].plot(z_latent_selected[j, :], linewidth=1.5)
+                    #     ax[i_row].autoscale(enable=True, axis='x', tight=True)
+                    #     ax[i_row].set_xticklabels([])
+                    #     ax[i_row].set_ylabel(f'latent_dim_{j}')
+                    #     i_row += 1
+                    #
+                    # plt.savefig(inference_results_dir + '/' + f'inference_{i}_{idx}' + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+                    # plt.close(fig)

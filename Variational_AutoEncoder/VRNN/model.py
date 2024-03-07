@@ -198,12 +198,13 @@ class VRNN(nn.Module):
             # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
             # computing losses
-            kld_value = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
+            kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
             kld_loss += kld_value
-            # nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
-            nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
+            nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
+            # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
 
-            all_kld.append(kld_value)
+
+            all_kld.append(kld_elements)
             all_enc_std.append(enc_std_t)
             all_enc_mean.append(enc_mean_t)
             all_dec_mean.append(dec_mean_t)
@@ -211,20 +212,7 @@ class VRNN(nn.Module):
             all_z_t.append(z_t)
 
         reconstructed = torch.stack(all_dec_mean, dim=0)
-        rec_loss = F.mse_loss(reconstructed, x, reduction='mean')
-        # results = {
-        #     "rec_loss": rec_loss,
-        #     "kld_loss": kld_loss,
-        #     "nll_loss": nll_loss,
-        #     "encoder_mean": all_enc_mean,
-        #     "encoder_std": all_enc_std,
-        #     "decoder_mean": all_dec_mean,
-        #     "decoder_std": all_dec_std,
-        #     "kld_values": all_kld,
-        #     "Sx": scattering_original,
-        #     "Sx_meta": meta,
-        #     "z_latent": all_z_t
-        # }
+        rec_loss = F.mse_loss(reconstructed, x, reduction='sum')
         results = VrnnForward(
             rec_loss=rec_loss,
             kld_loss=kld_loss,
@@ -239,9 +227,6 @@ class VRNN(nn.Module):
             z_latent=all_z_t
         )
         return results
-        # return rec_loss, kld_loss, nll_loss, \
-        #     (all_enc_mean, all_enc_std), \
-        #     (all_dec_mean, all_dec_std), (scattering_original, meta), all_z_t
 
 
     def sample(self, seq_len):
@@ -284,18 +269,18 @@ class VRNN(nn.Module):
         pass
 
 
-    # def _reparameterized_sample(self, mean, std):
-    #     """using std to sample"""
-    #     eps = torch.empty(size=std.size(), device=device, dtype=torch.float).normal_()
-    #     return eps.mul(std).add_(mean)
+    def _reparameterized_sample(self, mean, std):
+        """using std to sample"""
+        eps = torch.empty(size=std.size(), device=device, dtype=torch.float).normal_()
+        return eps.mul(std).add_(mean)
 
 
 
-    def _reparameterized_sample(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        noise = torch.randn_like(std)
-        z = mu + noise * std
-        return z
+    # def _reparameterized_sample(self, mu, logvar):
+    #     std = torch.exp(0.5 * logvar)
+    #     noise = torch.randn_like(std)
+    #     z = mu + noise * std
+    #     return z
 
 
     def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
@@ -305,11 +290,12 @@ class VRNN(nn.Module):
 
         kld_element = (2 * torch.log(std_2 + EPS) - 2 * torch.log(std_1 + EPS) +
                        (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
-        return 0.5 * torch.sum(kld_element)
+        #  kld_element -> tensor (batch_size, latent_dim)
+        return 0.5 * torch.sum(kld_element), kld_element
 
     def _nll_bernoulli(self, theta, x):
         theta = torch.clamp(theta, min=1e-9)
-        return - torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
+        return -torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
 
     # def _nll_gauss(self, mean, std, x):
     #     return torch.sum(torch.log(std + EPS) + torch.log(2 * torch.pi)/2 + (x - mean).pow(2)/(2*std.pow(2)))

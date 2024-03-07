@@ -3,8 +3,8 @@ general_config:
   lr: 0.01
   weight_decay: 0.0
   checkpoint_frequency: 20
-  plot_frequency: 100
-  epochs: 10
+  plot_frequency: 10
+  epochs: 21
   batch_size:
     train: 512
 

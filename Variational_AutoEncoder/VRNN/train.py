@@ -63,7 +63,8 @@ def setup_logging(log_file_setup=None):
     console_handler = logging.StreamHandler()
 
     # Optional: add a formatter to include more details
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('- %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
 
@@ -80,8 +81,10 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     for param_group in optimizer.param_groups:
         current_learning_rate = param_group['lr']
         print(f'Learning Rate; {current_learning_rate}')
-    train_loss = 0
-    reconstrucion_loss = 0
+    train_loss_tl = 0
+    reconstruction_loss = 0
+    kld_loss_tl = 0
+    nll_loss_tl = 0
     plt.close('all')
     train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch}")
     model.train()
@@ -93,22 +96,23 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         loss = results.kld_loss + results.rec_loss
         loss.backward()
         optimizer.step()
+        kld_loss_tl += results.kld_loss.item()
+        nll_loss_tl += results.nll_loss.item()
+        train_loss_tl += loss.item()
+        reconstruction_loss += results.rec_loss.item()
 
         # grad norm clipping, only in pytorch version >= 1.10
         nn.utils.clip_grad_norm_(model.parameters(), clip)
         z_latent = torch.stack(results.z_latent, dim=2)
-        # if epoch % plot_every_epoch == 0:
-        if epoch > 0:
+        message = (f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
+                   f'({100. * batch_idx / len(train_loader):.0f}%)] | '
+                   f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {0.00025 * results.kld_loss:.5f} | '
+                   f'-NLL Loss: {results.nll_loss.item():.5f} | '
+                   f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
+        print(message)
+        # tqdm.write(message)
+        if epoch % plot_every_epoch == 0:
             if batch_idx % 100 == 0:
-                message = f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} \
-                ({100. * batch_idx / len(train_loader):.0f}%)]\tKLD Loss: {results.kld_loss.item() / len(data):.6f}\tNLL Loss: \
-                {results.nll_loss.item() / len(data):.6f}'
-                tqdm.write(message)
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\t KLD Loss: {:.6f} \t NLL Loss: {:.6f}'.format(
-                    epoch, batch_idx * batch_size, batch_size * (len(train_loader.dataset)//batch_size),
-                    100. * batch_idx / len(train_loader),
-                    results.kld_loss / batch_size,
-                    results.nll_loss / batch_size))
                 one_data = data[10].unsqueeze(0)
                 results_ = model(one_data)
                 z_latent = torch.stack(results_.z_latent, dim=2)
@@ -122,18 +126,21 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
                                    Sx=results_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{batch_idx}_train')
-        train_loss += loss.item()
-        reconstrucion_loss += results.rec_loss.item()
-    print(f'train loss is ====> {train_loss}')
-    print('====> Epoch: {} Average loss: {:.4f}'.format(
-        epoch, train_loss / len(train_loader.dataset)))
 
-    reconstrucion_loss /= len(train_loader.dataset)
-    return train_loss, reconstrucion_loss
+    # print(f'Train Loop train loss is ====> {train_loss_tl}')
+    # print('====> Epoch: {} Average loss: {:.4f}'.format(
+    #     epoch, train_loss_tl / len(train_loader.dataset)))
+    train_loss_tl_avg = train_loss_tl / len(train_loader)
+    reconstruction_loss_avg = reconstruction_loss / len(train_loader.dataset)
+    train_nll_loss_avg = nll_loss_tl / len(train_loader.dataset)
+    kld_loss_avg = kld_loss_tl / len(train_loader.dataset)
+
+    print(f'Train Loss Mean: {train_loss_tl_avg} - Reconstruction Loss Mean: {reconstruction_loss_avg}')
+    return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg, train_nll_loss_avg
     
 
 def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None):
-    mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0
+    mean_test_loss, mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0, 0
     model.eval()
     with torch.no_grad():
         for i, data in enumerate(test_loader):
@@ -141,6 +148,7 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epo
             data = data.to(device)
 
             results_test = model(data)
+            mean_test_loss += (0.00025 * results_test.kld_loss.item() + results_test.rec_loss.item())
             mean_kld_loss += results_test.kld_loss.item()
             mean_nll_loss += results_test.nll_loss.item()
             mean_rec_loss += results_test.rec_loss.item()
@@ -154,20 +162,22 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epo
             dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
             dec_std_np = dec_std_tensor.cpu().detach().numpy()
             dec_variance_np = np.square(dec_std_np)
-            # if epoch % plot_every_epoch == 0:
-            if epoch > 0:
+            if epoch % plot_every_epoch == 0:
+            # if epoch > 0:
                 plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
                                    Sx=results_test_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{i}_test')
 
+    mean_test_loss /= len(test_loader.dataset)
     mean_kld_loss /= len(test_loader.dataset)
     mean_nll_loss /= len(test_loader.dataset)
     mean_rec_loss /= len(test_loader.dataset)
    
-    print('====> Test set loss: KLD Loss = {:.4f}, NLL Loss = {:.4f} '.format(
-        mean_kld_loss, mean_nll_loss))
-    return mean_kld_loss + mean_nll_loss, mean_rec_loss
+    # print(f'Average Test set loss: KLD Loss = {mean_kld_loss}, \
+    #  NLL Loss = {mean_nll_loss}, \
+    #   reconstruction loss = {mean_rec_loss}')
+    return mean_test_loss, mean_rec_loss, mean_kld_loss, mean_nll_loss
 
 
 def aux_hie_test(model=None, dataloader=None, results_dir=None):
@@ -310,13 +320,25 @@ if __name__ == '__main__':
     schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 2000])
     train_loss_list = []
     train_rec_loss_list = []
-    test_rec_loss_list = []
+    train_kld_loss_list = []
+    train_nll_loss_list = []
+
     test_loss_list = []
+    test_rec_loss_list = []
+    test_kld_loss_list = []
+    test_nll_loss_list = []
     for epoch in tqdm(range(1, n_epochs + 1), desc='Epoch:'):
         log_resource_usage()
-        train_loss, train_rec_loss = train(model=model, epoch=epoch, plot_dir=train_results_dir,
-                                           plot_every_epoch=plot_every_epoch, train_loader=train_loader,
-                                           optimizer=optimizer)
+        train_loss, train_rec_loss, train_kld_loss, train_nll_loss = train(model=model, epoch=epoch,
+                                                                           plot_dir=train_results_dir,
+                                                                           plot_every_epoch=plot_every_epoch,
+                                                                           train_loader=train_loader,
+                                                                           optimizer=optimizer)
+
+        train_loss_list.append(train_loss)
+        train_rec_loss_list.append(train_rec_loss)
+        train_kld_loss_list.append(train_kld_loss)
+        train_nll_loss_list.append(train_nll_loss)
 
         if len(train_loss_list) > 0:
             if train_loss <= min(train_loss_list):
@@ -328,29 +350,34 @@ if __name__ == '__main__':
                 torch.save(model.state_dict(), model_dir)
 
         schedular.step()
-        train_loss_list.append(train_loss)
-        train_rec_loss_list.append(train_rec_loss)
-
-        test_loss, test_rec_loss = test(epoch=epoch, model=model, plot_dir=test_results_dir, test_loader=test_loader,
-                                        plot_every_epoch=plot_every_epoch)
+        test_loss, test_rec_loss, test_kld_loss, test_nll_loss = test(epoch=epoch, model=model,
+                                                                      plot_dir=test_results_dir,
+                                                                      test_loader=test_loader,
+                                                                      plot_every_epoch=plot_every_epoch)
         test_loss_list.append(test_loss)
         test_rec_loss_list.append(test_rec_loss)
+        test_kld_loss_list.append(test_kld_loss)
+        test_nll_loss_list.append(test_nll_loss)
 
         tqdm.write(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Test Loss = {test_loss:.4f}")
 
         train_loss_min = min(train_loss_list)
 
-        loss_dict = {'train': train_loss_list,
-                     'test': test_loss_list,
-                     'train_rec': train_rec_loss_list,
-                     'test_rec': test_rec_loss_list}
+        loss_dict = {'train_loss': train_loss_list,
+                     'test_loss': test_loss_list,
+                     'train_rec_loss': train_rec_loss_list,
+                     'test_rec_loss': test_rec_loss_list,
+                     'train_kld_loss': train_kld_loss_list,
+                     'test_kld_loss': test_kld_loss_list,
+                     'train_nll_loss': train_nll_loss_list,
+                     'test_nll_loss': test_nll_loss_list}
 
         # writer.add_scalar('Train/Loss', train_loss, epoch)
         # writer.add_scalar('Test/Loss', test_loss, epoch)
         # writer.add_scalar('Train/Reconstruction_Loss', train_rec_loss, epoch)
         # writer.add_scalar('Test/Reconstruction_Loss', test_rec_loss, epoch)
         loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
-        if epoch % 100 == 0:
+        if epoch % 2 == 0:
             with open(loss_path, 'wb') as file:
                 pickle.dump(loss_dict, file)
             plot_loss_dict(loss_dict=loss_dict, epoch_num=epoch, plot_dir=train_results_dir)

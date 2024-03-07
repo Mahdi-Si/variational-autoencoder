@@ -10,7 +10,8 @@ from matplotlib.colors import LogNorm
 from kymatio.torch import Scattering1D
 import pickle
 from scipy.signal import decimate
-
+import plotly.graph_objects as go
+import os
 
 def calculate_stats(loader):
     mean = 0.0
@@ -266,13 +267,104 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
     # plt.rcParams['text.usetex'] = True
     num_rows = len(loss_dict.keys())
     t = np.arange(1, epoch_num + 1)
-    fig, ax = plt.subplots(nrows=num_rows, ncols=1, figsize=(15, 30))
+    # fig, ax = plt.subplots(nrows=num_rows, ncols=1, figsize=(15, 30))
+    fig = go.Figure()
     for i, (key, val) in enumerate(loss_dict.items()):
-        ax[i].autoscale(enable=True, axis='x', tight=True)
-        ax[i].plot(t, val, label=key, color='#265073', linewidth=0.7)
-        ax[i].set_ylabel(key, fontsize=14)
-        ax[i].grid()
+        fig.add_trace(go.Scatter(y=val, mode='lines', name=key))
+        # ax[i].autoscale(enable=True, axis='x', tight=True)
+        # ax[i].plot(t, val, label=key, color='#265073', linewidth=0.7)
+        # ax[i].set_ylabel(key, fontsize=14)
+        # ax[i].grid()
+    # fig = go.Figure()
+    # Update layout to add titles and adjust other settings as needed
+    fig.update_layout(title='Loss',
+                      xaxis_title='Epoch',
+                      yaxis_title='Loss',
+                      legend_title='Legend',
+                      template='plotly_dark')
 
-    plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=100)
+    # Save the figure as an HTML file
+    fig_path = os.path.join(plot_dir, 'loss_plot.html')
+    fig.write_html(fig_path)
+    # plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=100)
+
+
+def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None,
+                          z_latent_std=None, kld_values=None, plot_dir=None, tag=''):
+    Fs = 4
+    log_eps = 1e-3
+    N = len(signal)
+    N_ROWS = 5 + (z_latent_mean.shape[0])
+    t_in = np.arange(0, N) / Fs
+    cmstr = 'Blues'
+    plt.set_cmap(cmstr)
+    plt.rcParams.update({'font.size': 12, 'axes.titlesize': 8, 'axes.labelsize': 8})
+    i_row = 0
+
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(20, 56),
+                           gridspec_kw={"width_ratios": [60, 1]})
+    ax[i_row, 1].set_axis_off()
+    ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('FHR (bpm)')
+
+    i_row += 1
+    z_diff = np.diff(z_latent_mean, axis=1)
+    z_diff_sum = z_diff.sum(axis=0)
+    ax[i_row, 1].set_axis_off()
+    ax[i_row, 0].plot(z_diff_sum, linewidth=0.8)
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Latent Z difference')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(kld_values, aspect='auto', norm="linear",
+                                  extent=[0, N / Fs, kld_values.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('KLD')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(z_latent_mean, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, z_latent_mean.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Latent Representation Mean')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(z_latent_std, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, z_latent_mean.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Latent Representation Std')
+
+
+    for i in range(z_latent_mean.shape[0]):
+        i_row += 1
+        ax[i_row, 0].plot(z_latent_mean[i, :], linewidth=1.9, label="Latent Representation")
+        ax[i_row, 0].fill_between(np.arange(len(z_latent_mean[i, :])),
+                                  z_latent_mean[i, :] - z_latent_std[i, :],
+                                  z_latent_mean[i, :] + z_latent_std[i, :],
+                                  color='blue', alpha=0.5, label='Std dev')
+        ax[i_row, 0].legend()
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].set_ylabel(f'Coefficient {i}')
+
+
+    cmstr = 'bwr'
+    plt.set_cmap(cmstr)
+    fig.delaxes(ax[1][1])
+    ax[0, 1].set_axis_off()
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
+    #             orientation='landscape')
+    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.close(fig)
 
 
