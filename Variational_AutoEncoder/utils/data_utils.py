@@ -311,15 +311,16 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
 
     i_row += 1
     z_diff = np.diff(z_latent_mean, axis=1)
-    z_diff_sum = z_diff.sum(axis=0)
+    z_diff_squared_sum = np.square(z_diff).sum(axis=0)
+    # z_diff_sum = z_diff.sum(axis=0)
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(z_diff_sum, linewidth=0.8)
+    ax[i_row, 0].plot(z_diff_squared_sum, linewidth=0.8)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('Latent Z difference')
 
     i_row += 1
-    imgplot = ax[i_row, 0].imshow(kld_values, aspect='auto', norm="linear",
+    imgplot = ax[i_row, 0].imshow(kld_values, aspect='auto', norm="symlog",
                                   extent=[0, N / Fs, kld_values.shape[0], 0])
     ax[i_row, 1].set_axis_on()
     fig.colorbar(imgplot, cax=ax[i_row, 1])
@@ -352,7 +353,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax[i_row, 0].fill_between(np.arange(len(z_latent_mean[i, :])),
                                   z_latent_mean[i, :] - z_latent_std[i, :],
                                   z_latent_mean[i, :] + z_latent_std[i, :],
-                                  color='blue', alpha=0.5, label='Std dev')
+                                  color='blue', alpha=0.25, label='Std dev')
         ax[i_row, 0].legend()
         ax[i_row, 1].set_axis_off()
         ax[i_row, 0].set_ylabel(f'Coefficient {i}')

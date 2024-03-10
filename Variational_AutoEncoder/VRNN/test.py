@@ -139,7 +139,7 @@ if __name__ == '__main__':
                 for idx in selected_idx:
                     selected_signal = batched_data[idx]
                     # selected_signal = batched_data[idx].detach().cpu().numpy()
-                    repeated_signal = selected_signal.repeat(2, 1)
+                    repeated_signal = selected_signal.repeat(100, 1)
                     results = model(repeated_signal)
                     Sx = results.Sx.permute(1, 2, 0)[0]
                     z_latent_ = torch.stack(results.z_latent, dim=2)

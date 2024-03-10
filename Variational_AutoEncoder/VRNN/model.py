@@ -19,7 +19,7 @@ using unimodal isotropic gaussian distributions for
 inference, prior, and generating models."""
 
 # EPS = torch.finfo(torch.float).eps # numerical logs
-EPS = 1e-3
+EPS = 1e-5
 
 if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -288,10 +288,23 @@ class VRNN(nn.Module):
         std_2 = torch.clamp(std_2, min=1e-9)
         std_1 = torch.clamp(std_1, min=1e-9)
 
-        kld_element = (2 * torch.log(std_2 + EPS) - 2 * torch.log(std_1 + EPS) +
-                       (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
+        kld_element = (torch.log(std_2 + EPS) - torch.log(std_1 + EPS) +
+                       ((std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2)) - 0.5)
         #  kld_element -> tensor (batch_size, latent_dim)
-        return 0.5 * torch.sum(kld_element), kld_element
+        # kld = - 0.5 * torch.sum(1 + std_1 - mean_1.pow(2) - std_1.exp())
+        return torch.sum(kld_element), kld_element
+
+
+    # def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
+    #     """Using std to compute KLD"""
+    #     std_2 = torch.clamp(std_2, min=1e-9)
+    #     std_1 = torch.clamp(std_1, min=1e-9)
+    #
+    #     kld_element = (torch.log(std_2.pow(2) / std_1.pow(2)) +
+    #                    (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
+    #     #  kld_element -> tensor (batch_size, latent_dim)
+    #     return 0.5 * torch.sum(kld_element), kld_element
+
 
     def _nll_bernoulli(self, theta, x):
         theta = torch.clamp(theta, min=1e-9)

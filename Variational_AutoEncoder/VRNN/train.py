@@ -93,7 +93,7 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         optimizer.zero_grad()
         results = model(data)
         # loss = results.kld_loss + results.nll_loss
-        loss = results.kld_loss + results.rec_loss
+        loss = (250 * results.kld_loss) + results.rec_loss
         loss.backward()
         optimizer.step()
         kld_loss_tl += results.kld_loss.item()
@@ -130,7 +130,7 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     # print(f'Train Loop train loss is ====> {train_loss_tl}')
     # print('====> Epoch: {} Average loss: {:.4f}'.format(
     #     epoch, train_loss_tl / len(train_loader.dataset)))
-    train_loss_tl_avg = train_loss_tl / len(train_loader)
+    train_loss_tl_avg = train_loss_tl / len(train_loader.dataset)
     reconstruction_loss_avg = reconstruction_loss / len(train_loader.dataset)
     train_nll_loss_avg = nll_loss_tl / len(train_loader.dataset)
     kld_loss_avg = kld_loss_tl / len(train_loader.dataset)
@@ -148,7 +148,7 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epo
             data = data.to(device)
 
             results_test = model(data)
-            mean_test_loss += (0.00025 * results_test.kld_loss.item() + results_test.rec_loss.item())
+            mean_test_loss += (results_test.kld_loss.item() + results_test.rec_loss.item())
             mean_kld_loss += results_test.kld_loss.item()
             mean_nll_loss += results_test.nll_loss.item()
             mean_rec_loss += results_test.rec_loss.item()
