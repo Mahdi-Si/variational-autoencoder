@@ -303,7 +303,7 @@ class VRNN(nn.Module):
         """Using std to compute KLD VS normal"""
         std_1 = torch.clamp(std_1, min=1e-9)
         logvar = 2 * torch.log(std_1)
-        kld_element = -0.5 * torch.sum(1 + logvar - mean_1.pow(2) - std_1.exp())
+        kld_element = 1 + logvar - mean_1.pow(2) - std_1.exp()
         kl_div = -0.5 * torch.sum(kld_element)
         return kl_div, kld_element
 

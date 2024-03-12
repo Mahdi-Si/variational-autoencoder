@@ -190,7 +190,7 @@ def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=
 
 
 def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
-                       Sxr=None, z_latent=None, plot_dir=None, tag=''):
+                       Sxr=None, Sxr_std=None, z_latent=None, plot_dir=None, tag=''):
     Fs = 4
     log_eps = 1e-3
     N = len(signal)
@@ -246,6 +246,11 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
         i_row += 1
         ax[i_row, 0].plot(Sx[i, :], linewidth=0.9, label="True")
         ax[i_row, 0].plot(Sxr[i, :], linewidth=0.5, label="Reconstructed")
+        if Sxr_std is not None:
+            ax[i_row, 0].fill_between(np.arange(len(Sxr_std[i, :])),
+                                      Sxr[i, :] - Sxr_std[i, :],
+                                      Sxr[i, :] + Sxr_std[i, :],
+                                      color='blue', alpha=0.2, label='Std dev')
         ax[i_row, 0].legend()
         ax[i_row, 1].set_axis_off()
         ax[i_row, 0].set_ylabel(f'Coefficient {i}')

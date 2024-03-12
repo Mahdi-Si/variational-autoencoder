@@ -161,6 +161,7 @@ if __name__ == '__main__':
                     plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
                                        Sx=Sx.detach().cpu().numpy(), meta=None,
                                        Sxr=dec_mean_mean.detach().cpu().numpy(),
+                                       Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                        z_latent=z_latent_mean.detach().cpu().numpy(),
                                        plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}')
 

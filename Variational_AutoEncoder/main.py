@@ -93,6 +93,7 @@ def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train
     model.train()
     for batch_idx, batch_data in train_iterator:
         batch_data = batch_data.to(device)
+        optimizer.zero_grad()
         scattering_original, x_rec, z, mean, logvar = model(batch_data)
         total_loss, recon_loss, kl_div = loss_fn(x_rec, scattering_original, mean, logvar)
         total_loss.backward()
