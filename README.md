@@ -14,6 +14,7 @@ The `Variational_Autoencoder` folder contains the VAE and VRNN models.
 
 ### Results, checkpoints, tensorboard output folders:
 
+Adjust number of workers for data loader based on your CPU. 
 
 ---
 

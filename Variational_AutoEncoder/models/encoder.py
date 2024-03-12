@@ -75,43 +75,63 @@ class ConvEncoder(nn.Module):
 
 
 class LSTMEncoder(nn.Module):
-    def __init__(self, input_dim, hidden_size, hidden_sizes, num_layers, latent_dim):
+    def __init__(self, input_size, input_dim, hidden_dims, latent_size, latent_dim):
         """
         LSTM Encoder
         :param input_dim: The number of expected features in the input x
-        :param hidden_size: The number of features in the hidden state h
-        :param num_layers: Number of recurrent layers.
+        :param hidden_dims: The number of features in the hidden state h
         :param latent_dim: The dimensionality of the latent space.
         """
+        self.input_dim = input_dim
+        self.input_size = input_size
+        self.hidden_dims = hidden_dims
+        self.latent_size = latent_size
+        self.latent_dim = latent_dim
         super(LSTMEncoder, self).__init__()
-        # self.lstm_layers = nn.ModuleList([
-        #     nn.LSTM(input_dim if i == 0 else hidden_sizes[i - 1], hidden_sizes[i], batch_first=True)
-        #     for i in range(len(hidden_sizes))
-        # ])
-        self.lstm = nn.LSTM(input_dim, hidden_size, num_layers, batch_first=True)
+        self.lstm_layers = nn.ModuleList([
+            nn.LSTM(input_dim if i == 0 else self.hidden_dims[i - 1], self.hidden_dims[i], batch_first=True)
+            for i in range(len(self.hidden_dims))
+        ])
+        # self.lstm = nn.LSTM(input_dim, hidden_size, num_layers, batch_first=True)
         # self.batch_norm = nn.BatchNorm1d(5)
         self.sequential = nn.Sequential(
-            nn.Linear(1500, 800),
+            nn.Linear(self.input_size*self.hidden_dims[-1], self.latent_size*self.latent_dim),
             nn.ReLU(),
-            nn.Linear(800, 200),
-            nn.ReLU(),
-            nn.Linear(200, 150)
+            nn.Linear(self.latent_size*self.latent_dim, self.latent_size*self.latent_dim),
+            nn.Tanh(),
         )
-
+        self.fc_mean = nn.Linear(self.latent_size*self.latent_dim, self.latent_size*self.latent_dim)
+        self.fc_logvar = nn.Linear(self.latent_size * self.latent_dim, self.latent_size * self.latent_dim)
     def forward(self, x):
         """
         Forward pass
         :param x: input time series data (batch_size, sequence_length, input_size)
         :return: latent space mean and log variance
         """
-        lstm_out, (hidden, cells) = self.lstm(x)
-        lstm_out = x
-        # for lstm in self.lstm_layers:
-        #     lstm_out, _ = lstm(lstm_out)
-        # output = self.batch_norm(output.permute(0, 2, 1))
-        output = torch.flatten(lstm_out, start_dim=1)
-        output_ = self.sequential(output)
-        return output_
+        # lstm_out, (hidden, cells) = self.lstm_layers(x)
+        lstm_out = x.permute(0, 2, 1)
+        hidden_states = []
+        # for i, lstm in enumerate(self.lstm_layers):
+        #     if i == 0:
+        #         h_0 = torch.zeros(1, lstm_out.size(0), self.hidden_dims[i]).to(lstm_out.device)
+        #         c_0 = torch.zeros(1, lstm_out.size(0), self.hidden_dims[i]).to(lstm_out.device)
+        #     else:
+        #         h_0, c_0 = hidden_states[-1]
+        #     lstm_out, (h_n, c_n) = lstm(lstm_out, h_0=h_0, c_0=c_0)
+        #     hidden_states.append((h_n, c_n))
+        for lstm in self.lstm_layers:
+            lstm_out, (h_n, c_n) = lstm(lstm_out)
+        # lstm_out shape (batch_size, signal_len, last lstm layer hidden_dim)
+        # output = self.batch_norm(lstm_out.permute(0, 2, 1))
+        output = torch.flatten(lstm_out, start_dim=1)  # Flatten shape (bath_size, signal_len * hidden_dim)
+        output = self.sequential(output)
+        mean_ = self.fc_mean(output)
+        mean_ = mean_.view(-1, self.latent_size, self.latent_dim)
+        logvar_ = self.fc_logvar(output)
+        logvar_ = logvar_.view(-1, self.latent_size, self.latent_dim)
+        # output_ = output.view(-1, self.latent_size, self.latent_dim)
+        # output_ = self.sequential(output)
+        return mean_, logvar_
 
 
 class GRUEncoder(nn.Module):

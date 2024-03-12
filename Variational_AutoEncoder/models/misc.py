@@ -93,9 +93,9 @@ class VAELoss(nn.Module):
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
         # Scale KL divergence
-        kl_div_weighted = 0.99 * kl_div
+        # kl_div_weighted = 0.99 * kl_div
 
         # Total loss
-        total_loss = recon_loss + kl_div_weighted
+        total_loss = recon_loss + kl_div
 
         return total_loss, recon_loss, kl_div

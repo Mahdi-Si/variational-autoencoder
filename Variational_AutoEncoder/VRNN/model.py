@@ -147,7 +147,7 @@ class VRNN(nn.Module):
 
         x_mean_reshaped = x_mean_tensor.reshape((1, 1, 12, 1)).to(device)
         x_std_reshaped = x_std_tensor.reshape((1, 1, 12, 1)).to(device)
-
+        # x input shape (batch_size, signal_length)
         # scattering transform preprocess ------------------------------------------------------------------------------
         [Sx, Px] = self.transform(x)  # Sx shape(64, 1, 76, 300)
         meta = self.transform.meta()
@@ -198,7 +198,8 @@ class VRNN(nn.Module):
             # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
             # computing losses
-            kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
+            # kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
+            kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t)
             kld_loss += kld_value
             nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
             # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
@@ -282,18 +283,29 @@ class VRNN(nn.Module):
     #     z = mu + noise * std
     #     return z
 
+    # def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
+    #     """Using std to compute KLD"""
+    #     std_2 = torch.clamp(std_2, min=1e-9)
+    #     std_1 = torch.clamp(std_1, min=1e-9)
+    #
+    #     kld_element = (torch.log(std_2 + EPS) - torch.log(std_1 + EPS) +
+    #                    ((std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2)) - 0.5)
+    #     logvar = 2 * torch.log(std_1)
+    #     kld = -0.5 * torch.sum(1 + logvar - mean_1.pow(2) - std_1.exp())
+    #     kl_div = -0.5 * torch.sum(1 + std_1 - mean_1.pow(2) - std_1.exp())
+    #
+    #     #  kld_element -> tensor (batch_size, latent_dim)
+    #     # kld = - 0.5 * torch.sum(1 + std_1 - mean_1.pow(2) - std_1.exp())
+    #     return torch.sum(kld_element), kld_element
 
-    def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
-        """Using std to compute KLD"""
-        std_2 = torch.clamp(std_2, min=1e-9)
+
+    def _kld_gauss(self, mean_1, std_1):
+        """Using std to compute KLD VS normal"""
         std_1 = torch.clamp(std_1, min=1e-9)
-
-        kld_element = (torch.log(std_2 + EPS) - torch.log(std_1 + EPS) +
-                       ((std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2)) - 0.5)
-        #  kld_element -> tensor (batch_size, latent_dim)
-        # kld = - 0.5 * torch.sum(1 + std_1 - mean_1.pow(2) - std_1.exp())
-        return torch.sum(kld_element), kld_element
-
+        logvar = 2 * torch.log(std_1)
+        kld_element = -0.5 * torch.sum(1 + logvar - mean_1.pow(2) - std_1.exp())
+        kl_div = -0.5 * torch.sum(kld_element)
+        return kl_div, kld_element
 
     # def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
     #     """Using std to compute KLD"""

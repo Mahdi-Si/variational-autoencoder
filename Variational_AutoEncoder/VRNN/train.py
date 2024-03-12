@@ -81,10 +81,10 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     for param_group in optimizer.param_groups:
         current_learning_rate = param_group['lr']
         print(f'Learning Rate; {current_learning_rate}')
-    train_loss_tl = 0
-    reconstruction_loss = 0
-    kld_loss_tl = 0
-    nll_loss_tl = 0
+    train_loss_epoch = 0
+    reconstruction_loss_epoch = 0
+    kld_loss_epoch = 0
+    nll_loss_epoch = 0
     plt.close('all')
     train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch}")
     model.train()
@@ -96,10 +96,10 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         loss = (250 * results.kld_loss) + results.rec_loss
         loss.backward()
         optimizer.step()
-        kld_loss_tl += results.kld_loss.item()
-        nll_loss_tl += results.nll_loss.item()
-        train_loss_tl += loss.item()
-        reconstruction_loss += results.rec_loss.item()
+        kld_loss_epoch += results.kld_loss.item()
+        nll_loss_epoch += results.nll_loss.item()
+        train_loss_epoch += loss.item()
+        reconstruction_loss_epoch += results.rec_loss.item()
 
         # grad norm clipping, only in pytorch version >= 1.10
         nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -130,10 +130,10 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     # print(f'Train Loop train loss is ====> {train_loss_tl}')
     # print('====> Epoch: {} Average loss: {:.4f}'.format(
     #     epoch, train_loss_tl / len(train_loader.dataset)))
-    train_loss_tl_avg = train_loss_tl / len(train_loader.dataset)
-    reconstruction_loss_avg = reconstruction_loss / len(train_loader.dataset)
-    train_nll_loss_avg = nll_loss_tl / len(train_loader.dataset)
-    kld_loss_avg = kld_loss_tl / len(train_loader.dataset)
+    train_loss_tl_avg = train_loss_epoch / len(train_loader.dataset)
+    reconstruction_loss_avg = reconstruction_loss_epoch / len(train_loader.dataset)
+    train_nll_loss_avg = nll_loss_epoch / len(train_loader.dataset)
+    kld_loss_avg = kld_loss_epoch / len(train_loader.dataset)
 
     print(f'Train Loss Mean: {train_loss_tl_avg} - Reconstruction Loss Mean: {reconstruction_loss_avg}')
     return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg, train_nll_loss_avg
@@ -215,9 +215,9 @@ if __name__ == '__main__':
     train_results_dir = os.path.join(output_base_dir, base_folder, 'train_results')
     test_results_dir = os.path.join(output_base_dir, base_folder, 'test_results')
     model_checkpoint_dir = os.path.join(output_base_dir, base_folder, 'model_checkpoints')
-    aux_results_dir = os.path.join(output_base_dir, base_folder, 'aux_test_results')
+    aux_dir = os.path.join(output_base_dir, base_folder, 'aux_test_HIE')
     tensorboard_dir = os.path.join(output_base_dir, base_folder, 'tensorboard_log')
-    folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir, aux_results_dir,
+    folders_list = [output_base_dir, train_results_dir, test_results_dir, model_checkpoint_dir, aux_dir,
                     tensorboard_dir]
     for folder in folders_list:
         if not os.path.exists(folder):

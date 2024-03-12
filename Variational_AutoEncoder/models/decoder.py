@@ -36,8 +36,8 @@ class ConvLinDecoder(nn.Module):
 
 
 class LSTMDecoder(nn.Module):
-    def __init__(self, latent_dim=None, hidden_size=None, hidden_sizes=None, num_layers=None, output_dim=None,
-                 sequence_length=None):
+    def __init__(self, latent_size=None, latent_dim=None, hidden_dims=None, num_layers=None, output_size=None,
+                 output_dim=None):
         """
         LSTM Decoder
         :param latent_dim: The dimensionality of the latent space.
@@ -47,43 +47,33 @@ class LSTMDecoder(nn.Module):
         :param sequence_length: The length of the output sequence, matching the sequence_length of the encoder input.
         """
         super(LSTMDecoder, self).__init__()
-        self.sequence_length = sequence_length
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
+        self.latent_size = latent_size
+        self.latent_dim = latent_dim
+        self.hidden_dims = hidden_dims
+        # self.num_layers = num_layers
+        self.output_size = output_size
+        self.output_dim = output_dim
 
-        # Mapping the latent space back to a dimension that can be reshaped into the expected LSTM input shape
-        self.initial_linear = nn.Sequential(
-            nn.Linear(150, 200),
+        self.sequential = nn.Sequential(
+            nn.Linear(latent_size * latent_dim, latent_size * latent_dim),
+            nn.Tanh(),
+            nn.Linear(latent_size * latent_dim, hidden_dims[0] * output_size),
             nn.ReLU(),
-            nn.Linear(200, 800),
-            nn.ReLU(),
-            nn.Linear(800, 1500),
+            nn.Linear(hidden_dims[0] * output_size, hidden_dims[0] * output_size)
         )
 
-        # Assuming the encoder's LSTM output is batch normalized, we might not necessarily reverse that operation here
-        # Batch normalization in decoders can be tricky due to the batch statistics behaving differently during training and inference
-
-        # Recreate the LSTM structure from the encoder
-        # self.lstm = nn.LSTM(1500 // sequence_length, hidden_size, num_layers, batch_first=True)
         self.lstm_layers = nn.ModuleList([
-            nn.LSTM((1500 // sequence_length) if i == 0 else hidden_sizes[i - 1], hidden_sizes[i], batch_first=True)
-            for i in range(len(hidden_sizes))
+            nn.LSTM(hidden_dims[i], hidden_dims[i + 1] if i + 1 < len(hidden_dims) else output_dim, batch_first=True)
+            for i in (range(len(hidden_dims)))
         ])
 
         # Final layer to match the output dimension to the original input dimension
         # self.final_linear = nn.Linear(hidden_size, output_dim)
 
     def forward(self, x):
-        """
-        Forward pass
-        :param x: input from latent space (batch_size, latent_dim)
-        :return: reconstructed time series data (batch_size, sequence_length, output_dim)
-        """
-        # Map the latent vectors back to a suitable dimension
-        x = self.initial_linear(x)
-
-        # Reshape to match the LSTM input shape
-        x = x.view(-1, self.sequence_length, 1500 // self.sequence_length)
+        x = x.view(-1, self.latent_size * self.latent_dim)
+        x = self.sequential(x)  # shape(batch_size, output_size*hidden_dims[0])
+        x = x.view(-1, self.output_size, self.hidden_dims[0])  # shape(batch_size, output_size, hidden_dim[0])
 
         lstm_out = x
         for lstm in self.lstm_layers:
