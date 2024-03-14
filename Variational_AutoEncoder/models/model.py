@@ -68,6 +68,7 @@ class VAE(nn.Module):
         x = torch.cat((x_t0_normalized, x_t1_normalized), dim=2)
         # x = x.squeeze(1).permute(0, 2, 1)  # (batch_size, 300, 13)
         x = x.squeeze(1)
+        x = x[0:self.input_dim]
         scattering_original = x  # shape (batch_size, signal_len, 13)
         # x = x.squeeze().transpose(0, 1)
         # --------------------------------------------------------------------------------------------------------------

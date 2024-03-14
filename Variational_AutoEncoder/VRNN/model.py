@@ -69,8 +69,9 @@ class CustomTanh(nn.Module):
 
 
 class VRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, log_stat=None, bias=False):
+    def __init__(self, x_len, x_dim, h_dim, z_dim, n_layers, log_stat=None, bias=False):
         super(VRNN, self).__init__()
+        self.x_len = x_len
         self.x_dim = x_dim
         self.h_dim = h_dim
         self.z_dim = z_dim
@@ -80,7 +81,7 @@ class VRNN(nn.Module):
         self.st0_mean = 140.37047
         self.st0_std = 18.81198
 
-        self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=2400)
+        self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=x_len)
 
         #feature-extracting transformations
         self.phi_x = nn.Sequential(
@@ -140,7 +141,6 @@ class VRNN(nn.Module):
         all_kld = []
         kld_loss = 0
         nll_loss = 0
-
         # Convert numpy arrays to PyTorch tensors and specify dtype
         x_mean_tensor = torch.tensor(self.x_mean, dtype=torch.float32)
         x_std_tensor = torch.tensor(self.x_std, dtype=torch.float32)
@@ -166,6 +166,7 @@ class VRNN(nn.Module):
         x = torch.cat((x_t0_normalized, x_t1_normalized), dim=2)
         # x = x.squeeze(1).permute(0, 2, 1)  # (batch_size, 300, 13)
         x = x.squeeze(1).permute(2, 0, 1)
+        x = x[:, :, 0:self.x_dim]
         scattering_original = x
         # x = x.squeeze().transpose(0, 1)
         # scattering transform preprocess ------------------------------------------------------------------------------
@@ -176,7 +177,7 @@ class VRNN(nn.Module):
 
             phi_x_t = self.phi_x(x[t])
 
-            #encoder
+            # encoder
             enc_t = self.enc(torch.cat([phi_x_t, h[-1]], 1))
             enc_mean_t = self.enc_mean(enc_t)
             enc_std_t = self.enc_std(enc_t) 
@@ -198,8 +199,8 @@ class VRNN(nn.Module):
             # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
             # computing losses
-            # kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
-            kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t)
+            kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
+            # kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t)
             kld_loss += kld_value
             nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
             # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
@@ -237,44 +238,43 @@ class VRNN(nn.Module):
         h = torch.zeros(self.n_layers, 1, self.h_dim, device=device)
         for t in range(seq_len):
 
-            #prior
+            # prior
             prior_t = self.prior(h[-1])
             prior_mean_t = self.prior_mean(prior_t)
             prior_std_t = self.prior_std(prior_t)
 
-            #sampling and reparameterization
+            # sampling and reparameterization
             z_t = self._reparameterized_sample(prior_mean_t, prior_std_t)
             phi_z_t = self.phi_z(z_t)
 
-            #decoder
+            # decoder
             dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
             dec_mean_t = self.dec_mean(dec_t)
-            #dec_std_t = self.dec_std(dec_t)
+            # dec_std_t = self.dec_std(dec_t)
 
             phi_x_t = self.phi_x(dec_mean_t)
 
-            #recurrence
+            # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
 
             sample[t] = dec_mean_t.data
 
         return sample
 
-
+    @staticmethod
     def reset_parameters(self, stdv=1e-1):
         for weight in self.parameters():
             weight.data.normal_(0, stdv)
 
-
+    @staticmethod
     def _init_weights(self, stdv):
         pass
 
-
-    def _reparameterized_sample(self, mean, std):
+    @staticmethod
+    def _reparameterized_sample(mean, std):
         """using std to sample"""
         eps = torch.empty(size=std.size(), device=device, dtype=torch.float).normal_()
         return eps.mul(std).add_(mean)
-
 
 
     # def _reparameterized_sample(self, mu, logvar):
@@ -298,33 +298,35 @@ class VRNN(nn.Module):
     #     # kld = - 0.5 * torch.sum(1 + std_1 - mean_1.pow(2) - std_1.exp())
     #     return torch.sum(kld_element), kld_element
 
-
-    def _kld_gauss(self, mean_1, std_1):
-        """Using std to compute KLD VS normal"""
-        std_1 = torch.clamp(std_1, min=1e-9)
-        logvar = 2 * torch.log(std_1)
-        kld_element = 1 + logvar - mean_1.pow(2) - std_1.exp()
-        kl_div = -0.5 * torch.sum(kld_element)
-        return kl_div, kld_element
-
-    # def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
-    #     """Using std to compute KLD"""
-    #     std_2 = torch.clamp(std_2, min=1e-9)
+    # @staticmethod
+    # def _kld_gauss(mean_1, std_1):
+    #     """Using std to compute KLD VS normal"""
     #     std_1 = torch.clamp(std_1, min=1e-9)
-    #
-    #     kld_element = (torch.log(std_2.pow(2) / std_1.pow(2)) +
-    #                    (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
-    #     #  kld_element -> tensor (batch_size, latent_dim)
-    #     return 0.5 * torch.sum(kld_element), kld_element
+    #     logvar = 2 * torch.log(std_1)
+    #     kld_element = 1 + logvar - mean_1.pow(2) - std_1.exp()
+    #     kl_div = -0.5 * torch.sum(kld_element)
+    #     return kl_div, kld_element
 
+    @staticmethod
+    def _kld_gauss(mean_1, std_1, mean_2, std_2):
+        """Using std to compute KLD"""
+        std_2 = torch.clamp(std_2, min=1e-9)
+        std_1 = torch.clamp(std_1, min=1e-9)
 
-    def _nll_bernoulli(self, theta, x):
+        kld_element = (torch.log(std_2.pow(2) / std_1.pow(2)) +
+                       (std_1.pow(2) + (mean_1 - mean_2).pow(2)) / std_2.pow(2) - 1)
+        #  kld_element -> tensor (batch_size, latent_dim)
+        return 0.5 * torch.sum(kld_element), kld_element
+
+    @staticmethod
+    def _nll_bernoulli(theta, x):
         theta = torch.clamp(theta, min=1e-9)
         return -torch.sum(x*torch.log(theta + EPS) + (1-x)*torch.log((1-theta) + EPS))
 
     # def _nll_gauss(self, mean, std, x):
     #     return torch.sum(torch.log(std + EPS) + torch.log(2 * torch.pi)/2 + (x - mean).pow(2)/(2*std.pow(2)))
-
-    def _nll_gauss(self, mean, std, x):
+    @staticmethod
+    def _nll_gauss(mean, std, x):
         pi_tensor = torch.tensor(2 * torch.pi, device=std.device, dtype=std.dtype)  # Convert to tensor
         return torch.sum(torch.log(std + EPS) + torch.log(pi_tensor) / 2 + (x - mean).pow(2) / (2 * std.pow(2)))
+

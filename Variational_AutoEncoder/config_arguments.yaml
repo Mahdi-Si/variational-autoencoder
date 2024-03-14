@@ -17,7 +17,7 @@ model_config:
     decoder_hidden_dim: [11, 9, 7]
     encoder_hidden_dim: [7, 9, 11]
     latent_size: 100
-    latent_dim: 5
+    latent_dim: 8
     num_LSTM_layers: 3
 
 

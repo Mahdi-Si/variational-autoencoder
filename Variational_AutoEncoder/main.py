@@ -169,7 +169,6 @@ if __name__ == "__main__":
     print('==' * 50)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    # setup configs ----------------------------------------------------------------------------------------------------
 
     # creating the corresponding folders and paths ---------------------------------------------------------------------
     now = datetime.now()
@@ -205,19 +204,6 @@ if __name__ == "__main__":
     plot_every_epoch = config['general_config']['plot_frequency']
     epochs_num = config['general_config']['epochs']
 
-    # healthy_dataset_path = os.path.join(dataset_dir, 'HEALTHY_signal_dicts.pkl')
-    # hie_dataset_path = os.path.join(dataset_dir, 'HIE_signal_dicts.pkl')
-
-    # healthy_list = prepare_data(healthy_dataset_path, do_decimate=False)
-    # hie_list = prepare_data(hie_dataset_path, do_decimate=False)
-
-    # fhr_values = [dict_item['fhr'] for dict_item in healthy_list + hie_list]
-    # min_fhr = min([min(fhr) for fhr in fhr_values])
-    # max_fhr = max([max(fhr) for fhr in fhr_values])
-    # normalize_data(healthy_list, min_fhr, max_fhr)
-    # normalize_data(hie_list, min_fhr, max_fhr)
-    # fhr_healthy_dataset = FHRDataset(healthy_list)
-
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False, num_workers=14)
@@ -244,8 +230,6 @@ if __name__ == "__main__":
     aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
     print('==' * 50)
-    # fhr_hie_dataset = FHRDataset(hie_list[0:10])
-    # hie_dataloader = DataLoader(fhr_hie_dataset, batch_size=1, shuffle=False)
 
     # define model and train it ----------------------------------------------------------------------------------------
     input_size = config['model_config']['VAE_model']['input_size']
@@ -257,14 +241,6 @@ if __name__ == "__main__":
     enc_hidden_dim = config['model_config']['VAE_model']['encoder_hidden_dim']
     lr = config['general_config']['lr']
     # model ------------------------------------------------------------------------------------------------------------
-    # VAE_model = VAE(
-    #     input_size=input_size,
-    #     input_dim=input_dim,
-    #     dec_hidden_dim=dec_hidden_dim,
-    #     enc_hidden_dim=enc_hidden_dim,
-    #     latent_size=latent_size,
-    #     num_LSTM_layers=num_LSTM_layers
-    # )
     # VAE_model = VAE_linear(input_seq_size=300, latent_dim=120)
     VAE_model = VAE(input_size=input_size, input_dim=input_dim, latent_size=latent_size, enc_hidden_dim=enc_hidden_dim,
                     latent_dim=latent_dim, num_LSTM_layers=num_LSTM_layers, dec_hidden_dim=dec_hidden_dim,

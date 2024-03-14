@@ -1,20 +1,21 @@
 general_config:
-  tag: test_checkpoint_VRNN-
+  tag: InputD1-L8-lr4-H60-B64
   lr: 0.01
   weight_decay: 0.0
   checkpoint_frequency: 20
-  plot_frequency: 10
-  epochs: 21
+  plot_frequency: 1
+  epochs: 100
   batch_size:
     train: 512
 
 model_config:
   VAE_model:
+    raw_input_size: 2400
     input_size: 150
-    input_dim: 13
-    RNN_hidden_dim: 90
-    encoder_hidden_dim: 50
-    latent_size: 8
+    input_dim: 1
+    RNN_hidden_dim: 60
+    encoder_hidden_dim: 150
+    latent_size: 5
     num_LSTM_layers: 3
 
 

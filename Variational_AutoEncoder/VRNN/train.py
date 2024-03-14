@@ -93,7 +93,7 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         optimizer.zero_grad()
         results = model(data)
         # loss = results.kld_loss + results.nll_loss
-        loss = (250 * results.kld_loss) + results.rec_loss
+        loss = (5 * results.kld_loss) + results.rec_loss
         loss.backward()
         optimizer.step()
         kld_loss_epoch += results.kld_loss.item()
@@ -117,8 +117,8 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
                 results_ = model(one_data)
                 z_latent = torch.stack(results_.z_latent, dim=2)
                 sample = model.sample(torch.tensor(150, device=device))
-                dec_mean_tensor = torch.cat(results_.decoder_mean, dim=0).squeeze()
-                dec_std_tensor = torch.cat(results_.decoder_std, dim=0).squeeze()
+                dec_mean_tensor = torch.cat(results_.decoder_mean, dim=0)  # before .squeeze() shape (input_size, input_dim)
+                dec_std_tensor = torch.cat(results_.decoder_std, dim=0)   # .squeeze()
                 dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
                 dec_std_np = dec_std_tensor.cpu().detach().numpy()
                 dec_variance_np = np.square(dec_std_np)
@@ -157,8 +157,8 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epo
             results_test_ = model(one_data)
             z_latent = torch.stack(results_test_.z_latent, dim=2)
             sample = model.sample(torch.tensor(150, device=device))
-            dec_mean_tensor = torch.cat(results_test_.decoder_mean, dim=0).squeeze()  # Remove the unnecessary dimensions
-            dec_std_tensor = torch.cat(results_test_.decoder_std, dim=0).squeeze()
+            dec_mean_tensor = torch.cat(results_test_.decoder_mean, dim=0)  # Remove the unnecessary dimensions
+            dec_std_tensor = torch.cat(results_test_.decoder_std, dim=0)
             dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
             dec_std_np = dec_std_tensor.cpu().detach().numpy()
             dec_variance_np = np.square(dec_std_np)
@@ -281,6 +281,7 @@ if __name__ == '__main__':
     # hie_dataloader = DataLoader(fhr_hie_dataset, batch_size=1, shuffle=False)
 
     # define model and train it ----------------------------------------------------------------------------------------
+    raw_input_size = config['model_config']['VAE_model']['raw_input_size']
     input_size = config['model_config']['VAE_model']['input_size']
     input_dim = config['model_config']['VAE_model']['input_dim']
     latent_size = config['model_config']['VAE_model']['latent_size']
@@ -306,7 +307,7 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     plt.ion()
 
-    model = VRNN(x_dim, h_dim, z_dim, n_layers, log_stat=log_stat)
+    model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
     print(f'Model:  \n {model}')
     print('==' * 50)
     model = model.to(device)
@@ -317,7 +318,7 @@ if __name__ == '__main__':
     # writer = SummaryWriter(log_dir=tensorboard_dir)
     # writer.add_graph(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 2000])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[500, 1000, 2000])
     train_loss_list = []
     train_rec_loss_list = []
     train_kld_loss_list = []
