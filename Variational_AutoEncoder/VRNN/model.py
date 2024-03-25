@@ -27,6 +27,7 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
+
 @dataclass
 class VrnnForward:
     rec_loss: torch.Tensor = None
@@ -40,6 +41,7 @@ class VrnnForward:
     Sx: torch.Tensor = None
     Sx_meta: dict = None
     z_latent: List[torch.Tensor] = None
+    hidden_states: List[torch.Tensor] = None
 
 
 class CustomTanhSim(nn.Module):
@@ -137,6 +139,7 @@ class VRNN(nn.Module):
 
         all_enc_mean, all_enc_std = [], []
         all_dec_mean, all_dec_std = [], []
+        all_h = []
         all_z_t = []
         all_kld = []
         kld_loss = 0
@@ -173,6 +176,7 @@ class VRNN(nn.Module):
         # shape of x before entering the loop: (time_index, Batch, x_t_dim) where x_t_dim is the dimension \
         # of x at each time sample
         h = torch.zeros(self.n_layers, x.size(1), self.h_dim, device=device)
+
         for t in range(x.size(0)):
 
             phi_x_t = self.phi_x(x[t])
@@ -189,6 +193,7 @@ class VRNN(nn.Module):
 
             # sampling and reparameterization
             z_t = self._reparameterized_sample(enc_mean_t, enc_std_t)
+            # z_t = self._modify_z(z=z_t, modify_dims=[0, 1, 2], scale=0, shift=0)
             phi_z_t = self.phi_z(z_t)
 
             # decoder
@@ -198,6 +203,7 @@ class VRNN(nn.Module):
 
             # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 1).unsqueeze(0), h)
+            # h[:, :, [0, 1, 2, 4, 6, 7, 8, 9]] = 0
             # computing losses
             kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t, prior_mean_t, prior_std_t)
             # kld_value, kld_elements = self._kld_gauss(enc_mean_t, enc_std_t)
@@ -205,7 +211,7 @@ class VRNN(nn.Module):
             nll_loss += self._nll_gauss(dec_mean_t, dec_std_t, x[t])
             # nll_loss += self._nll_bernoulli(dec_mean_t, x[t])
 
-
+            all_h.append(h)
             all_kld.append(kld_elements)
             all_enc_std.append(enc_std_t)
             all_enc_mean.append(enc_mean_t)
@@ -226,7 +232,8 @@ class VRNN(nn.Module):
             kld_values=all_kld,
             Sx=scattering_original,
             Sx_meta=meta,
-            z_latent=all_z_t
+            z_latent=all_z_t,
+            hidden_states=all_h
         )
         return results
 
@@ -330,3 +337,8 @@ class VRNN(nn.Module):
         pi_tensor = torch.tensor(2 * torch.pi, device=std.device, dtype=std.dtype)  # Convert to tensor
         return torch.sum(torch.log(std + EPS) + torch.log(pi_tensor) / 2 + (x - mean).pow(2) / (2 * std.pow(2)))
 
+    @staticmethod
+    def _modify_z(z, modify_dims, shift, scale):
+        for i in modify_dims:
+            z[:, i] = scale * z[:, i] + shift
+        return z

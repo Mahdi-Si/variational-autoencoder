@@ -23,7 +23,7 @@ import builtins
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
     calculate_stats, plot_scattering_v2, plot_loss_dict
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage
+from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -35,49 +35,11 @@ using unimodal isotropic gaussian distributions for
 inference, prior, and generating models."""
 
 
-# Utils ----------------------------------------------------------------------------------------------------------------
-class StreamToLogger:
-    """
-    Stream object that redirects writes to a logger instance.
-    """
-    def __init__(self, logger_, log_level=logging.INFO):
-        self.logger = logger_
-        self.log_level = log_level
-
-    def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
-
-    def flush(self):
-        pass
-
-
-# Setup your logging
-def setup_logging(log_file_setup=None):
-    # log_file = os.path.join(log_dir, 'log.txt')
-    logger_s = logging.getLogger('my_app')
-    logger_s.setLevel(logging.INFO)
-
-    # Create handlers for both file and console
-    file_handler = logging.FileHandler(log_file_setup, mode='w')
-    console_handler = logging.StreamHandler()
-
-    # Optional: add a formatter to include more details
-    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    formatter = logging.Formatter('- %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # Add both handlers to the logger
-    logger_s.addHandler(file_handler)
-    logger_s.addHandler(console_handler)
-
-    return logger_s
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, optimizer=None, plot_every_epoch=None):
+def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train_loader=None,
+          optimizer=None, plot_every_epoch=None, Beta=None):
     for param_group in optimizer.param_groups:
         current_learning_rate = param_group['lr']
         print(f'Learning Rate; {current_learning_rate}')
@@ -86,14 +48,14 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     kld_loss_epoch = 0
     nll_loss_epoch = 0
     plt.close('all')
-    train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch}")
+    train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch_train}")
     model.train()
     for batch_idx, data in train_loader_tqdm:
         data = data.to(device)
         optimizer.zero_grad()
         results = model(data)
         # loss = results.kld_loss + results.nll_loss
-        loss = (5 * results.kld_loss) + results.rec_loss
+        loss = (kld_beta * results.kld_loss) + results.rec_loss
         loss.backward()
         optimizer.step()
         kld_loss_epoch += results.kld_loss.item()
@@ -104,14 +66,14 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
         # grad norm clipping, only in pytorch version >= 1.10
         nn.utils.clip_grad_norm_(model.parameters(), clip)
         z_latent = torch.stack(results.z_latent, dim=2)
-        message = (f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
+        message = (f'Train Epoch: {epoch_train} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
                    f'({100. * batch_idx / len(train_loader):.0f}%)] | '
                    f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {0.00025 * results.kld_loss:.5f} | '
                    f'-NLL Loss: {results.nll_loss.item():.5f} | '
                    f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
         print(message)
         # tqdm.write(message)
-        if epoch % plot_every_epoch == 0:
+        if epoch_train % plot_every_epoch == 0:
             if batch_idx % 100 == 0:
                 one_data = data[10].unsqueeze(0)
                 results_ = model(one_data)
@@ -125,7 +87,7 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
                 plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
                                    Sx=results_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
-                                   plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{batch_idx}_train')
+                                   plot_dir=plot_dir, tag=f'_epoch{epoch_train}_batch_{batch_idx}_train')
 
     # print(f'Train Loop train loss is ====> {train_loss_tl}')
     # print('====> Epoch: {} Average loss: {:.4f}'.format(
@@ -139,7 +101,7 @@ def train(epoch=None, model=None, plot_dir=None, tag='', train_loader=None, opti
     return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg, train_nll_loss_avg
     
 
-def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None):
+def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None):
     mean_test_loss, mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0, 0
     model.eval()
     with torch.no_grad():
@@ -162,12 +124,12 @@ def test(epoch=None, model=None, plot_dir=None, test_loader=None, plot_every_epo
             dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
             dec_std_np = dec_std_tensor.cpu().detach().numpy()
             dec_variance_np = np.square(dec_std_np)
-            if epoch % plot_every_epoch == 0:
+            if epoch_test % plot_every_epoch == 0:
             # if epoch > 0:
                 plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
                                    Sx=results_test_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
-                                   plot_dir=plot_dir, tag=f'_epoch{epoch}_batch_{i}_test')
+                                   plot_dir=plot_dir, tag=f'_epoch{epoch_test}_batch_{i}_test')
 
     mean_test_loss /= len(test_loader.dataset)
     mean_kld_loss /= len(test_loader.dataset)
@@ -284,17 +246,18 @@ if __name__ == '__main__':
     raw_input_size = config['model_config']['VAE_model']['raw_input_size']
     input_size = config['model_config']['VAE_model']['input_size']
     input_dim = config['model_config']['VAE_model']['input_dim']
-    latent_size = config['model_config']['VAE_model']['latent_size']
-    num_LSTM_layers = config['model_config']['VAE_model']['num_LSTM_layers']
+    latent_dim = config['model_config']['VAE_model']['latent_size']
+    num_layers = config['model_config']['VAE_model']['num_RNN_layers']
     rnn_hidden_dim = config['model_config']['VAE_model']['RNN_hidden_dim']
     epochs_num = config['general_config']['epochs']
     lr = config['general_config']['lr']
+    kld_beta = config['model_config']['VAE_model']['kld_beta']
 
     # hyperparameters
     x_dim = input_dim
     h_dim = rnn_hidden_dim
-    z_dim = latent_size
-    n_layers = 1
+    z_dim = latent_dim
+    n_layers = num_layers
     n_epochs = epochs_num
     clip = 10
     learning_rate = lr
@@ -330,10 +293,11 @@ if __name__ == '__main__':
     test_nll_loss_list = []
     for epoch in tqdm(range(1, n_epochs + 1), desc='Epoch:'):
         log_resource_usage()
-        train_loss, train_rec_loss, train_kld_loss, train_nll_loss = train(model=model, epoch=epoch,
+        train_loss, train_rec_loss, train_kld_loss, train_nll_loss = train(model=model, epoch_train=epoch,
                                                                            plot_dir=train_results_dir,
                                                                            plot_every_epoch=plot_every_epoch,
                                                                            train_loader=train_loader,
+                                                                           kld_beta=kld_beta,
                                                                            optimizer=optimizer)
 
         train_loss_list.append(train_loss)
@@ -351,7 +315,7 @@ if __name__ == '__main__':
                 torch.save(model.state_dict(), model_dir)
 
         schedular.step()
-        test_loss, test_rec_loss, test_kld_loss, test_nll_loss = test(epoch=epoch, model=model,
+        test_loss, test_rec_loss, test_kld_loss, test_nll_loss = test(epoch_test=epoch, model=model,
                                                                       plot_dir=test_results_dir,
                                                                       test_loader=test_loader,
                                                                       plot_every_epoch=plot_every_epoch)

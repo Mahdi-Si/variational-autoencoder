@@ -74,8 +74,9 @@ def vae_loss(reconstructed_x, original_x, mean, logvar):
 
 
 class VAELoss(nn.Module):
-    def __init__(self):
+    def __init__(self, beta=1):
         super(VAELoss, self).__init__()
+        self.beta = beta
 
     def forward(self, reconstructed_x, original_x, mean, logvar):
         """
@@ -92,10 +93,7 @@ class VAELoss(nn.Module):
         # KL divergence
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
-        # Scale KL divergence
-        # kl_div_weighted = 0.99 * kl_div
-
         # Total loss
-        total_loss = recon_loss + kl_div
+        total_loss = recon_loss + self.beta * kl_div
 
-        return total_loss, recon_loss, kl_div
+        return total_loss, recon_loss, self.beta*kl_div

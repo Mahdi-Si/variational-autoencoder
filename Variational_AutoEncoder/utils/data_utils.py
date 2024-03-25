@@ -191,6 +191,19 @@ def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=
 
 def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
                        Sxr=None, Sxr_std=None, z_latent=None, plot_dir=None, tag=''):
+    """
+    Plots the results of the model.
+    :param signal: (signal_size, 1)
+    :param plot_order:
+    :param Sx: (input_dim, input_size)
+    :param meta:
+    :param Sxr: (input_dim, input_size)
+    :param Sxr_std: (input_dim, input_size)
+    :param z_latent: (latent_dim, latent_size)
+    :param plot_dir:
+    :param tag:
+    :return:
+    """
     Fs = 4
     log_eps = 1e-3
     N = len(signal)
@@ -207,8 +220,8 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     plt.rcParams.update({'font.size': 12, 'axes.titlesize': 8, 'axes.labelsize': 8})
     i_row = 0
 
-    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(20, 56),
-                           gridspec_kw={"width_ratios": [60, 1]})
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                           gridspec_kw={"width_ratios": [80, 1]})
     ax[i_row, 1].set_axis_off()
     ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
@@ -244,13 +257,13 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
 
     for i in range(Sx.shape[0]):
         i_row += 1
-        ax[i_row, 0].plot(Sx[i, :], linewidth=0.9, label="True")
-        ax[i_row, 0].plot(Sxr[i, :], linewidth=0.5, label="Reconstructed")
+        ax[i_row, 0].plot(Sx[i, :], linewidth=1, label="True")
+        ax[i_row, 0].plot(Sxr[i, :], linewidth=0.9, label="Reconstructed")
         if Sxr_std is not None:
             ax[i_row, 0].fill_between(np.arange(len(Sxr_std[i, :])),
                                       Sxr[i, :] - Sxr_std[i, :],
                                       Sxr[i, :] + Sxr_std[i, :],
-                                      color='blue', alpha=0.2, label='Std dev')
+                                      color='blue', alpha=0.1, label='Std dev')
         ax[i_row, 0].legend()
         ax[i_row, 1].set_axis_off()
         ax[i_row, 0].set_ylabel(f'Coefficient {i}')
@@ -294,19 +307,20 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
     # plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=100)
 
 
-def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None,
-                          z_latent_std=None, kld_values=None, plot_dir=None, tag=''):
+def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None, h_hidden_mean=None,
+                          h_hidden_std=None,z_latent_std=None, kld_values=None, plot_dir=None, new_sample=None, tag=''):
     Fs = 4
     log_eps = 1e-3
     N = len(signal)
-    N_ROWS = 5 + (z_latent_mean.shape[0])
+    N_ROWS = 6 + (z_latent_mean.shape[0])
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
+    # cmstr = 'viridis'
     plt.set_cmap(cmstr)
-    plt.rcParams.update({'font.size': 12, 'axes.titlesize': 8, 'axes.labelsize': 8})
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
     i_row = 0
 
-    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(20, 56),
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                            gridspec_kw={"width_ratios": [60, 1]})
     ax[i_row, 1].set_axis_off()
     ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
@@ -351,6 +365,15 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('Latent Representation Std')
 
+    if h_hidden_mean is not None:
+        i_row += 1
+        imgplot = ax[i_row, 0].imshow(h_hidden_mean, aspect='auto', norm="symlog",
+                                      extent=[0, N / Fs, h_hidden_mean.shape[0], 0])
+        ax[i_row, 1].set_axis_on()
+        fig.colorbar(imgplot, cax=ax[i_row, 1])
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('Hidden States Mean')
 
     for i in range(z_latent_mean.shape[0]):
         i_row += 1
@@ -363,8 +386,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax[i_row, 1].set_axis_off()
         ax[i_row, 0].set_ylabel(f'Coefficient {i}')
 
-
-    cmstr = 'bwr'
+    cmstr = 'Blues'
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
@@ -373,4 +395,67 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
 
+    i_row = 0
+    N_ROWS = 2*z_latent_mean.shape[0] + 2
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                           gridspec_kw={"width_ratios": [60, 1]})
+    t_original = np.linspace(0, 1, len(signal))
+    t_reduced = np.linspace(0, 1, Sx.shape[1])
 
+    ax[i_row, 1].set_axis_off()
+    ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel(f'FHR')
+    for i in range(z_latent_mean.shape[0]):
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
+        marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
+        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+        plt.setp(marker_line, 'color', "#FC6736")
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'Latent Dim {i}')
+
+    i_row += 1
+    ax[i_row, 1].set_axis_off()
+    ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
+    marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(z_latent_mean, axis=0), basefmt=" ")
+    plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel(f'Latent Dim Averaged')
+
+    for i in range(z_latent_mean.shape[0]):
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].hist(z_latent_mean[i, :], bins=20, alpha=0.6, color='blue')
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        # ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
+
+    plt.savefig(plot_dir + '/' + tag + '_latent-dims' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.close(fig)
+
+    N_ROWS = 2*Sx.shape[0]
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                           gridspec_kw={"width_ratios": [60, 1]}, squeeze=False)
+    i_row = -1
+    for i in range(Sx.shape[0]):
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(Sx[i, :], linewidth=2, color="#003865")
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('Original Signal')
+
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(new_sample[i, :], linewidth=1.5, color="#EF5B0C")
+
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('New Sample')
+    plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.close(fig)

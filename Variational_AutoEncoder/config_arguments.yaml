@@ -1,23 +1,23 @@
 general_config:
   tag: CNN-elu-[10-3-3]-ld70-
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0.0
-  checkpoint_frequency: 5
+  checkpoint_frequency: 20
   validation_frequency: 2
   plot_frequency: 10
   epochs: 2000
   batch_size:
-    train: 64
+    train: 128
     test: 1
 
 model_config:
   VAE_model:
     input_size: 150
     input_dim: 13
-    decoder_hidden_dim: [11, 9, 7]
-    encoder_hidden_dim: [7, 9, 11]
-    latent_size: 100
-    latent_dim: 8
+    decoder_hidden_dim: [20, 18, 16, 13]
+    encoder_hidden_dim: [13, 16, 18, 20]
+    latent_size: 150
+    latent_dim: 13
     num_LSTM_layers: 3
 
 

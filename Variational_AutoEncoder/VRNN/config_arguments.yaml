@@ -1,6 +1,6 @@
 general_config:
-  tag: InputD1-L8-lr4-H60-B64
-  lr: 0.01
+  tag: representation_experiment
+  lr: 0.001
   weight_decay: 0.0
   checkpoint_frequency: 20
   plot_frequency: 1
@@ -13,10 +13,10 @@ model_config:
     raw_input_size: 2400
     input_size: 150
     input_dim: 1
-    RNN_hidden_dim: 60
-    encoder_hidden_dim: 150
-    latent_size: 5
-    num_LSTM_layers: 3
+    RNN_hidden_dim: 10
+    latent_size: 3
+    num_RNN_layers: 1
+    kld_beta: 50
 
 
 folders_config:

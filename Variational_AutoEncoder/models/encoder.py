@@ -98,10 +98,16 @@ class LSTMEncoder(nn.Module):
             nn.Linear(self.input_size*self.hidden_dims[-1], self.latent_size*self.latent_dim),
             nn.ReLU(),
             nn.Linear(self.latent_size*self.latent_dim, self.latent_size*self.latent_dim),
-            nn.Tanh(),
+            nn.ReLU(),
         )
-        self.fc_mean = nn.Linear(self.latent_size*self.latent_dim, self.latent_size*self.latent_dim)
-        self.fc_logvar = nn.Linear(self.latent_size * self.latent_dim, self.latent_size * self.latent_dim)
+        self.fc_mean = nn.Sequential(
+            nn.Linear(self.latent_size*self.latent_dim, self.latent_size*self.latent_dim)
+        )
+
+        self.fc_logvar = nn.Sequential(
+            nn.Linear(self.latent_size * self.latent_dim, self.latent_size * self.latent_dim),
+            nn.Softplus()
+        )
     def forward(self, x):
         """
         Forward pass

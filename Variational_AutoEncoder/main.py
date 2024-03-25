@@ -24,50 +24,9 @@ import builtins
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
     calculate_stats, plot_scattering_v2, plot_loss_dict
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage
+from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-# Utils ----------------------------------------------------------------------------------------------------------------
-class StreamToLogger:
-    """
-    Stream object that redirects writes to a logger instance.
-    """
-    def __init__(self, logger_, log_level=logging.INFO):
-        self.logger = logger_
-        self.log_level = log_level
-
-    def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
-
-    def flush(self):
-        pass
-
-
-# Setup your logging
-def setup_logging(log_file_setup=None):
-    # log_file = os.path.join(log_dir, 'log.txt')
-    logger_s = logging.getLogger('my_app')
-    logger_s.setLevel(logging.INFO)
-
-    # Create handlers for both file and console
-    file_handler = logging.FileHandler(log_file_setup, mode='w')
-    console_handler = logging.StreamHandler()
-
-    # Optional: add a formatter to include more details
-    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    formatter = logging.Formatter('- %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # Add both handlers to the logger
-    logger_s.addHandler(file_handler)
-    logger_s.addHandler(console_handler)
-
-    return logger_s
-
-# ----------------------------------------------------------------------------------------------------------------------
 
 
 def loss_function(x, x_hat, mean, log_var):
@@ -76,89 +35,91 @@ def loss_function(x, x_hat, mean, log_var):
     return reproduction_loss + (0.001 * kld)
 
 
-# Function to update the learning rate of the optimizer
-def update_learning_rate(optimizer, lr):
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-
 # Todo implement log_stat for config and here
-def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train_plot_dir=None, epoch_num=None):
+def train(model=None, optimizer=None, loss_fn=None, train_dataloader=None, train_plot_dir=None, epoch_num=None,
+          plot_every_epoch=None):
     for param_group in optimizer.param_groups:
         current_learning_rate = param_group['lr']
         print(f'Learning Rate; {current_learning_rate}')
 
     train_iterator = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", leave=False)
-    loss_train_per_batch = []
     model.train()
+    loss_epoch = 0
+    reconstruction_loss_epoch = 0
+    kld_loss_epoch = 0
     for batch_idx, batch_data in train_iterator:
         batch_data = batch_data.to(device)
         optimizer.zero_grad()
         scattering_original, x_rec, z, mean, logvar = model(batch_data)
+        # input output signals: (Batch_size, input_dim, input_size)
+        # z, mean, logvar: (batch_size, latent_size, latent_dim)
         total_loss, recon_loss, kl_div = loss_fn(x_rec, scattering_original, mean, logvar)
+        train_iterator.set_postfix(total_loss=total_loss.item(),
+                                   recon_loss=recon_loss.item(),
+                                   kl_div=kl_div.item())
         total_loss.backward()
         optimizer.step()
-        loss_train_per_batch.append(total_loss.item())
-        train_iterator.set_postfix(loss=total_loss.item())
-        if (epoch_num > 0) or (epochs_num == 10):
-            if batch_idx % 100 == 0:
-                idx = np.random.randint(0, len(scattering_original)-1, 1)
-                # plot_scattering(signal=batch_data[0], Sx=original_x[0].permute(1, 0), Sxr=reconstructed_x[0],
-                #                 do_plot_rec=True, tag=f'train_{epoch_num}_', plot_dir=train_plot_dir)
+
+        loss_epoch += total_loss.item()
+        reconstruction_loss_epoch += recon_loss.item()
+        kld_loss_epoch += kl_div.item()
+        nn.utils.clip_grad_norm_(model.parameters(), 12)  # observe the performance with respect to clip
+        if epoch % plot_every_epoch == 0 and batch_idx == (len(train_iterator)-1):
+            selected_idx = np.random.randint(0, batch_data.shape[0], 1)
+            for idx in selected_idx:
+                plot_scattering_v2(signal=batch_data[idx].unsqueeze(1).detach().cpu().numpy(),
+                                   Sx=scattering_original[idx].detach().cpu().numpy(),
+                                   Sxr=x_rec[idx].detach().cpu().numpy(),
+                                   z_latent=z[idx].permute(1, 0).detach().cpu().numpy(),
+                                   tag=f'train_{epoch_num}_{batch_idx}', plot_dir=train_plot_dir)
                 # plot_original_reconstructed(original_x=original_x[idx[0]].cpu().detach().numpy(),
                 #                             reconstructed_x=reconstructed_x[idx[0]].cpu().detach().numpy(),
                 #                             plot_dir=train_plot_dir, tag=f'train_{epoch_num}_{batch_idx}_')
-    loss_train = np.mean(loss_train_per_batch)
-    train_iterator.set_postfix(loss=loss_train)
-    return loss_train
+    avr_total_loss = loss_epoch / len(train_dataloader)
+    avr_recon_loss = reconstruction_loss_epoch / len(train_dataloader)
+    avr_kld_loss = kld_loss_epoch / len(train_dataloader)
+    train_iterator.set_postfix(total_loss=avr_total_loss,
+                               recon_loss=avr_recon_loss,
+                               kl_div=avr_kld_loss)
+    return avr_total_loss, avr_recon_loss, avr_kld_loss
 
 
-def test(model=None, loss_fn=None, valid_dataloader=None, validation_plot_dir=None, epoch_num=None):
+def test(model=None, loss_fn=None, test_dataloader=None, validation_plot_dir=None, epoch_num=None,
+         plot_every_epoch=None):
     model.eval()
-    valid_iterator = tqdm(enumerate(valid_dataloader), total=len(valid_dataloader), desc="testing")
-    loss_test_per_batch = []
+    test_iterator = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="testing")
+    loss_epoch = 0
+    reconstruction_loss_epoch = 0
+    kld_loss_epoch = 0
     with torch.no_grad():
-        for batch_idx, batch_data in valid_iterator:
+        for batch_idx, batch_data in test_iterator:
             batch_data = batch_data.to(device)
-            original_x, reconstructed_x, mean, logvar = model(batch_data)
-            total_loss, recon_loss, kl_div = loss_fn(reconstructed_x, original_x, mean, logvar)
-            loss_test_per_batch.append(total_loss.item())
-            if epoch_num > 500:
+            scattering_original, x_rec, z, mean, logvar = model(batch_data)
+            total_loss, recon_loss, kl_div = loss_fn(scattering_original, x_rec, mean, logvar)
+            loss_epoch += total_loss.item()
+            reconstruction_loss_epoch += recon_loss.item()
+            kld_loss_epoch += kl_div.item()
+            if epoch % plot_every_epoch == 0:
+                selected_idx = np.random.randint(0, batch_data.shape[0], 3)
                 if batch_idx % 100 == 0:
                     # recon_x = reconstructed_x.detach().cpu().numpy()
                     # true_fhr = batch_data.cpu().numpy()  # nd(64, 300)
-                    indices = torch.randperm(original_x.size(0))[:5]
-                    original_x_sampled = original_x[indices]
-                    reconstructed_x_sampled = reconstructed_x[indices]
-                    selected_idx = np.random.randint(0, len(original_x)-1, 5)
+                    indices = torch.randperm(scattering_original.size(0))[:5]
+                    original_x_sampled = scattering_original[indices]
+                    reconstructed_x_sampled = scattering_original[indices]
+                    selected_idx = np.random.randint(0, len(scattering_original)-1, 5)
                     for i in selected_idx:
-                        # original_x_selected = original_x_sampled[i]
-                        # reconstructed_x_selected = reconstructed_x_sampled[i]
-                        # plot_scattering(signal=batch_data[0], Sx=original_x[0].permute(1, 0), Sxr=reconstructed_x[0],
-                        #                 do_plot_rec=True, tag=f'test_{epoch_num}_{i}_', plot_dir=validation_plot_dir)
-                        plot_original_reconstructed(original_x=original_x[i].cpu().detach().numpy(),
-                                                    reconstructed_x=reconstructed_x[i].cpu().detach().numpy(),
-                                                    plot_dir=validation_plot_dir, tag=f'test_{epoch_num}_{i}_')
-                # predicted_fhr = reconstructed_x.cpu().numpy() # nd(64, 300)
-                # selected_indices = np.random.choice(true_fhr.shape[0], 5, replace=False)
-                # selected_signals_true = true_fhr[selected_indices, :]
-                # selected_signals_pred = predicted_fhr[selected_indices, :]
-                # plt.figure(figsize=(10, 8))
-                # for j, signal in enumerate(selected_signals_true):
-                #     plt.subplot(5, 1, j + 1)
-                #     plt.plot(selected_signals_true[j], label="True Signal", linewidth=3)
-                #     plt.plot(selected_signals_pred[j], label="Predicted Signal", linewidth=1)
-                #     plt.legend(loc='upper right')
-                #     plt.xlabel('Sample')
-                #     plt.ylabel('FHR')
-                # plt.tight_layout()
-                # fig_path = os.path.join(validation_plot_dir, f'plots{epoch_num}_{plt_c}.png')
-                # plt_c += 1
-                # plt.savefig(fig_path)
-                # plt.close()
-    loss_test = np.mean(loss_test_per_batch)
-    return loss_test
-
+                        pass
+                        # plot_original_reconstructed(original_x=scattering_original[i].cpu().detach().numpy(),
+                        #                             reconstructed_x=scattering_original[i].cpu().detach().numpy(),
+                        #                             plot_dir=validation_plot_dir, tag=f'test_{epoch_num}_{i}_')
+        avr_total_loss = loss_epoch / len(test_dataloader)
+        avr_recon_loss = reconstruction_loss_epoch / len(test_dataloader)
+        avr_kld_loss = kld_loss_epoch / len(test_dataloader)
+        test_iterator.set_postfix(total_loss=avr_total_loss,
+                                  recon_loss=avr_recon_loss,
+                                  kl_div=avr_kld_loss)
+        return avr_total_loss, avr_recon_loss, avr_kld_loss
 
 if __name__ == "__main__":
     # read config file -------------------------------------------------------------------------------------------------
@@ -240,6 +201,7 @@ if __name__ == "__main__":
     dec_hidden_dim = config['model_config']['VAE_model']['decoder_hidden_dim']
     enc_hidden_dim = config['model_config']['VAE_model']['encoder_hidden_dim']
     lr = config['general_config']['lr']
+    checkpoint_frequency = config['general_config']['checkpoint_frequency']
     # model ------------------------------------------------------------------------------------------------------------
     # VAE_model = VAE_linear(input_seq_size=300, latent_dim=120)
     VAE_model = VAE(input_size=input_size, input_dim=input_dim, latent_size=latent_size, enc_hidden_dim=enc_hidden_dim,
@@ -253,7 +215,7 @@ if __name__ == "__main__":
     print(f'Trainable params: {trainable_params}')
     print('==' * 50)
     optimizer = torch.optim.Adam(VAE_model.parameters(), lr=lr)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 2000])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[1000])
     epochs = tqdm(range(epochs_num))
 
     train_loss_list = []
@@ -265,68 +227,61 @@ if __name__ == "__main__":
     test_rec_loss_list = []
     test_kld_loss_list = []
     test_nll_loss_list = []
-    vae_loss_re = VAELoss()
+    vae_loss_re = VAELoss(beta=5)
 
     for epoch in tqdm(range(1, epochs_num + 1), desc='Epoch:'):
         log_resource_usage()
         loss_fn = VAELoss()
-        loss_train = train(
+        train_loss, train_rec_loss, train_kld_loss = train(
             model=VAE_model,
             optimizer=optimizer,
             loss_fn=vae_loss_re,
             train_dataloader=train_loader,
             train_plot_dir=train_results_dir,
-            epoch_num=epoch
+            epoch_num=epoch,
+            plot_every_epoch=plot_every_epoch
         )
 
+        if len(train_loss_list) > 0 and epoch % checkpoint_frequency == 0:
+            if train_loss <= min(train_loss_list):
+                checkpoint_name = f'VAE-{epoch}.pth'
+                model_dir = os.path.join(model_checkpoint_dir, checkpoint_name)
+                # for file_name in os.listdir(model_checkpoint_dir):
+                #     if file_name.endswith('.pth'):
+                #         os.remove(os.path.join(model_checkpoint_dir, file_name))
+                torch.save(VAE_model.state_dict(), model_dir)
 
+        train_loss_list.append(train_loss)
+        train_rec_loss_list.append(train_rec_loss)
+        train_kld_loss_list.append(train_kld_loss)
 
-
-    vae_loss_re = VAELoss()
-    train_loss_list = []
-    test_loss_list = []
-    for epoch in epochs:
-        if epoch > 1500:
-            update_learning_rate(optimizer, 0.0001)
-        else:
-            update_learning_rate(optimizer, 0.001)
-        loss_train = train(
-            model=VAE_model,
-            optimizer=optimizer,
-            loss_fn=vae_loss_re,
-            train_dataloader=train_loader,
-            train_plot_dir=train_results_dir,
-            epoch_num=epoch
-        )
-
-        train_loss_list.append(loss_train)
-
-        loss_test = test(
+        test_loss, test_rec_loss, test_kld_loss = test(
             model=VAE_model,
             loss_fn=vae_loss_re,
-            valid_dataloader=test_loader,
+            test_dataloader=test_loader,
             validation_plot_dir=test_results_dir,
-            epoch_num=epoch
+            epoch_num=epoch,
+            plot_every_epoch=plot_every_epoch
         )
+        tqdm.write(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Test Loss = {test_loss:.4f}")
+        test_loss_list.append(test_loss)
+        test_rec_loss_list.append(test_rec_loss)
+        test_kld_loss_list.append(test_kld_loss)
 
-        test_loss_list.append(loss_test)
+        loss_dict = {'train_loss': train_loss_list,
+                     'test_loss': test_loss_list,
+                     'train_rec_loss': train_rec_loss_list,
+                     'test_rec_loss': test_rec_loss_list,
+                     'train_kld_loss': train_kld_loss_list,
+                     'test_kld_loss': test_kld_loss_list}
 
-    fig, ax = plt.subplots(nrows=2, ncols=1)
+        loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
+        if epoch % plot_every_epoch == 0:
+            with open(loss_path, 'wb') as file:
+                pickle.dump(loss_dict, file)
+            plot_loss_dict(loss_dict=loss_dict, epoch_num=epoch, plot_dir=train_results_dir)
 
-    plt.rcParams["font.family"] = "Times New Roman"
-    plt.rcParams["font.size"] = 32
-    plt.rcParams['text.usetex'] = True
-    loss_dict = {'train': train_loss_list, 'test': test_loss_list}
     loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
     with open(loss_path, 'wb') as file:
         pickle.dump(loss_dict, file)
-    t = np.arange(1, len(epochs) + 1)
-    ax[0].autoscale(enable=True, axis='x', tight=True)
-    ax[0].plot(t, train_loss_list, label='train loss', color='#FF5733', linewidth=1)  # Custom hex color and line thickness
-    ax[1].autoscale(enable=True, axis='x', tight=True)
-    ax[1].plot(t, test_loss_list, label='test loss', color='#005B41', linewidth=1)  # Custom hex color and line thickness
-    # Adding grid, legend, and labels with specific requirements
-    # ax[0].grid(True)
-    # ax[0].legend()
-    # ax[0].set_xlabel('$\ell_2$')
-    plt.savefig(f'{train_results_dir}/Loss_st.pdf', bbox_inches='tight')
+    plot_loss_dict(loss_dict=loss_dict, epoch_num=-1, plot_dir=train_results_dir)
