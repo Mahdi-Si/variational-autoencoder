@@ -1,6 +1,6 @@
 general_config:
-  tag: CNN-elu-[10-3-3]-ld70-
-  lr: 0.01
+  tag: experimental_VAE
+  lr: 0.001
   weight_decay: 0.0
   checkpoint_frequency: 20
   validation_frequency: 2
@@ -14,8 +14,8 @@ model_config:
   VAE_model:
     input_size: 150
     input_dim: 13
-    decoder_hidden_dim: [20, 18, 16, 13]
-    encoder_hidden_dim: [13, 16, 18, 20]
+    decoder_hidden_dim: [13, 13, 13, 13]
+    encoder_hidden_dim: [13, 13, 13, 13]
     latent_size: 150
     latent_dim: 13
     num_LSTM_layers: 3

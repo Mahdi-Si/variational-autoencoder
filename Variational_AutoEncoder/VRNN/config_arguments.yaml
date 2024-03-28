@@ -1,5 +1,6 @@
 general_config:
-  tag: representation_experiment
+  tag: Change_all
+  checkpoint_path: null
   lr: 0.001
   weight_decay: 0.0
   checkpoint_frequency: 20
@@ -12,11 +13,11 @@ model_config:
   VAE_model:
     raw_input_size: 2400
     input_size: 150
-    input_dim: 1
-    RNN_hidden_dim: 10
-    latent_size: 3
-    num_RNN_layers: 1
-    kld_beta: 50
+    input_dim: 11
+    RNN_hidden_dim: 50
+    latent_size: 4
+    num_RNN_layers: 4
+    kld_beta: 250
 
 
 folders_config:

@@ -312,7 +312,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     Fs = 4
     log_eps = 1e-3
     N = len(signal)
-    N_ROWS = 6 + (z_latent_mean.shape[0])
+    N_ROWS = 7 + (z_latent_mean.shape[0])
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
     # cmstr = 'viridis'
@@ -337,6 +337,15 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('Latent Z difference')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(Sx, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, Sx.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('True ST')
 
     i_row += 1
     imgplot = ax[i_row, 0].imshow(kld_values, aspect='auto', norm="symlog",
@@ -430,7 +439,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     for i in range(z_latent_mean.shape[0]):
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].hist(z_latent_mean[i, :], bins=20, alpha=0.6, color='blue')
+        ax[i_row, 0].hist(z_latent_mean[i, :], bins=40, alpha=0.6, color='blue')
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         # ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')

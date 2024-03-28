@@ -12,6 +12,7 @@ from Variational_AutoEncoder.utils.data_utils import plot_scattering
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
+from Variational_AutoEncoder.models.dataset_transform import ScatteringTransform
 
 """implementation of the Variational Recurrent
 Neural Network (VRNN) from https://arxiv.org/abs/1506.02216
@@ -28,6 +29,7 @@ else:
     device = torch.device('cpu')
 
 
+# todo figure out a better way to set the device across all models and data
 @dataclass
 class VrnnForward:
     rec_loss: torch.Tensor = None
@@ -78,14 +80,11 @@ class VRNN(nn.Module):
         self.h_dim = h_dim
         self.z_dim = z_dim
         self.n_layers = n_layers
-        self.x_mean = log_stat[0][1:13]
-        self.x_std = log_stat[1][1:13]
-        self.st0_mean = 140.37047
-        self.st0_std = 18.81198
 
-        self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=x_len)
+        self.scattering_transform = ScatteringTransform(input_size=x_len, input_dim=x_dim, log_stat=log_stat,
+                                                        device=device)
 
-        #feature-extracting transformations
+        # feature-extracting transformations
         self.phi_x = nn.Sequential(
             nn.Linear(x_dim, h_dim),
             nn.ReLU(),
@@ -145,31 +144,7 @@ class VRNN(nn.Module):
         kld_loss = 0
         nll_loss = 0
         # Convert numpy arrays to PyTorch tensors and specify dtype
-        x_mean_tensor = torch.tensor(self.x_mean, dtype=torch.float32)
-        x_std_tensor = torch.tensor(self.x_std, dtype=torch.float32)
-
-        x_mean_reshaped = x_mean_tensor.reshape((1, 1, 12, 1)).to(device)
-        x_std_reshaped = x_std_tensor.reshape((1, 1, 12, 1)).to(device)
-        # x input shape (batch_size, signal_length)
-        # scattering transform preprocess ------------------------------------------------------------------------------
-        [Sx, Px] = self.transform(x)  # Sx shape(64, 1, 76, 300)
-        meta = self.transform.meta()
-        order0 = np.where(meta['order'] == 0)
-        order1 = np.where(meta['order'] == 1)
-        order2 = np.where(meta['order'] == 2)
-        combined_orders = np.where((meta['order'] == 0) | (meta['order'] == 1))
-        selected_orders = torch.from_numpy(combined_orders[0])
-        selected_orders_t0 = torch.from_numpy(order0[0])
-        selected_orders_t1 = torch.from_numpy(order1[0])
-        # x = Sx[:, :, selected_orders, :]
-        x_t0 = Sx[:, :, selected_orders_t0, :]
-        x_t0_normalized = (x_t0 - self.st0_mean) / self.st0_std
-        x_t1 = Sx[:, :, selected_orders_t1, :]
-        x_t1_normalized = (torch.log(x_t1 + 1e-4) - x_mean_reshaped) / x_std_reshaped
-        x = torch.cat((x_t0_normalized, x_t1_normalized), dim=2)
-        # x = x.squeeze(1).permute(0, 2, 1)  # (batch_size, 300, 13)
-        x = x.squeeze(1).permute(2, 0, 1)
-        x = x[:, :, 0:self.x_dim]
+        x, meta = self.scattering_transform(x)
         scattering_original = x
         # x = x.squeeze().transpose(0, 1)
         # scattering transform preprocess ------------------------------------------------------------------------------
@@ -193,7 +168,7 @@ class VRNN(nn.Module):
 
             # sampling and reparameterization
             z_t = self._reparameterized_sample(enc_mean_t, enc_std_t)
-            # z_t = self._modify_z(z=z_t, modify_dims=[0, 1, 2], scale=0, shift=0)
+            z_t = self._modify_z(z=z_t, modify_dims=[0, 1, 2, 3], scale=10, shift=0)
             phi_z_t = self.phi_z(z_t)
 
             # decoder

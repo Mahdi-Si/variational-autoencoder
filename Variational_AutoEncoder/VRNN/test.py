@@ -114,8 +114,9 @@ if __name__ == '__main__':
     model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
     params = model.parameters()
 
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\L3-H10-B50\VRNN-1253.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\100\VRNN-100.pth")
     checkpoint = torch.load(check_point_path, map_location='cpu')
+    # model.load_state_dict(checkpoint['state_dict'])
     model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     # model.load_state_dict(checkpoint['state_dict'])
@@ -135,9 +136,9 @@ if __name__ == '__main__':
             for idx in selected_idx:
                 selected_signal = batched_data[idx]
                 # selected_signal = batched_data[idx].detach().cpu().numpy()
-                repeated_signal = selected_signal.repeat(20, 1)
+                repeated_signal = selected_signal.repeat(100, 1)
                 results = model(repeated_signal)
-                new_sample = model.sample(150).permute(1, 0)
+                # new_sample = model.sample(150).permute(1, 0)
                 Sx = results.Sx.permute(1, 2, 0)[0]
                 z_latent_ = torch.stack(results.z_latent, dim=2)
                 kld_values = torch.stack(results.kld_values, dim=2)

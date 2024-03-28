@@ -18,6 +18,7 @@ from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import torch.nn.functional as F
 import numpy as np
 import builtins
+from vrnn_gauss import VRNN_Gauss
 # from torch.utils.tensorboard import SummaryWriter
 
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
@@ -59,7 +60,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
         loss.backward()
         optimizer.step()
         kld_loss_epoch += results.kld_loss.item()
-        nll_loss_epoch += results.nll_loss.item()
+        # nll_loss_epoch += results.nll_loss.item()
         train_loss_epoch += loss.item()
         reconstruction_loss_epoch += results.rec_loss.item()
 
@@ -69,7 +70,6 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
         message = (f'Train Epoch: {epoch_train} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
                    f'({100. * batch_idx / len(train_loader):.0f}%)] | '
                    f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {0.00025 * results.kld_loss:.5f} | '
-                   f'-NLL Loss: {results.nll_loss.item():.5f} | '
                    f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
         print(message)
         # tqdm.write(message)
@@ -78,7 +78,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
                 one_data = data[10].unsqueeze(0)
                 results_ = model(one_data)
                 z_latent = torch.stack(results_.z_latent, dim=2)
-                sample = model.sample(torch.tensor(150, device=device))
+                # sample = model.sample(torch.tensor(150, device=device))
                 dec_mean_tensor = torch.cat(results_.decoder_mean, dim=0)  # before .squeeze() shape (input_size, input_dim)
                 dec_std_tensor = torch.cat(results_.decoder_std, dim=0)   # .squeeze()
                 dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
@@ -94,11 +94,10 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
     #     epoch, train_loss_tl / len(train_loader.dataset)))
     train_loss_tl_avg = train_loss_epoch / len(train_loader.dataset)
     reconstruction_loss_avg = reconstruction_loss_epoch / len(train_loader.dataset)
-    train_nll_loss_avg = nll_loss_epoch / len(train_loader.dataset)
     kld_loss_avg = kld_loss_epoch / len(train_loader.dataset)
 
     print(f'Train Loss Mean: {train_loss_tl_avg} - Reconstruction Loss Mean: {reconstruction_loss_avg}')
-    return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg, train_nll_loss_avg
+    return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg
     
 
 def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None):
@@ -112,13 +111,13 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
             results_test = model(data)
             mean_test_loss += (results_test.kld_loss.item() + results_test.rec_loss.item())
             mean_kld_loss += results_test.kld_loss.item()
-            mean_nll_loss += results_test.nll_loss.item()
+            # mean_nll_loss += results_test.nll_loss.item()
             mean_rec_loss += results_test.rec_loss.item()
 
             one_data = data[0].unsqueeze(0)
             results_test_ = model(one_data)
             z_latent = torch.stack(results_test_.z_latent, dim=2)
-            sample = model.sample(torch.tensor(150, device=device))
+            # sample = model.sample(torch.tensor(150, device=device))
             dec_mean_tensor = torch.cat(results_test_.decoder_mean, dim=0)  # Remove the unnecessary dimensions
             dec_std_tensor = torch.cat(results_test_.decoder_std, dim=0)
             dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
@@ -133,13 +132,13 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
 
     mean_test_loss /= len(test_loader.dataset)
     mean_kld_loss /= len(test_loader.dataset)
-    mean_nll_loss /= len(test_loader.dataset)
+    # mean_nll_loss /= len(test_loader.dataset)
     mean_rec_loss /= len(test_loader.dataset)
    
     # print(f'Average Test set loss: KLD Loss = {mean_kld_loss}, \
     #  NLL Loss = {mean_nll_loss}, \
     #   reconstruction loss = {mean_rec_loss}')
-    return mean_test_loss, mean_rec_loss, mean_kld_loss, mean_nll_loss
+    return mean_test_loss, mean_rec_loss, mean_kld_loss
 
 
 def aux_hie_test(model=None, dataloader=None, results_dir=None):
@@ -150,7 +149,7 @@ def aux_hie_test(model=None, dataloader=None, results_dir=None):
             data = data.to(device)
             results_aux = model(data)
             mean_kld_loss += results_aux.kld_loss.item()
-            mean_nll_loss += results_aux.nll_loss.item()
+            # mean_nll_loss += results_aux.nll_loss.item()
             mean_rec_loss += results_aux.rec_loss.item()   # dec_mean -> list 150 of (256, 13) tensor, Sx(150, 256, 13)
             z_latent_ = torch.stack(results_aux.z_latent, dim=2)  # (256, 9, 150)
             dec_mean_ = torch.stack(results_aux.decoder_mean, dim=2)
@@ -200,6 +199,7 @@ if __name__ == '__main__':
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
     batch_size = config['general_config']['batch_size']['train']
     plot_every_epoch = config['general_config']['plot_frequency']
+    previous_check_point = config['general_config']['checkpoint_path']
 
     # healthy_dataset_path = os.path.join(dataset_dir, 'HEALTHY_signal_dicts.pkl')
     # hie_dataset_path = os.path.join(dataset_dir, 'HIE_signal_dicts.pkl')
@@ -270,7 +270,9 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     plt.ion()
 
-    model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
+    # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
+    model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     print(f'Model:  \n {model}')
     print('==' * 50)
     model = model.to(device)
@@ -282,18 +284,29 @@ if __name__ == '__main__':
     # writer.add_graph(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[500, 1000, 2000])
+
+    if previous_check_point is not None:
+        print(f"Loading checkpoint '{previous_check_point}'")
+        checkpoint = torch.load(previous_check_point)
+        start_epoch = checkpoint['epoch'] + 1
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print(f"Loaded checkpoint '{previous_check_point}' (epoch {checkpoint['epoch']})")
+    else:
+        start_epoch = 1
+
     train_loss_list = []
     train_rec_loss_list = []
     train_kld_loss_list = []
-    train_nll_loss_list = []
+    # train_nll_loss_list = []
 
     test_loss_list = []
     test_rec_loss_list = []
     test_kld_loss_list = []
-    test_nll_loss_list = []
-    for epoch in tqdm(range(1, n_epochs + 1), desc='Epoch:'):
+    # test_nll_loss_list = []
+    for epoch in tqdm(range(start_epoch, n_epochs + 1), desc='Epoch:'):
         log_resource_usage()
-        train_loss, train_rec_loss, train_kld_loss, train_nll_loss = train(model=model, epoch_train=epoch,
+        train_loss, train_rec_loss, train_kld_loss = train(model=model, epoch_train=epoch,
                                                                            plot_dir=train_results_dir,
                                                                            plot_every_epoch=plot_every_epoch,
                                                                            train_loader=train_loader,
@@ -303,7 +316,7 @@ if __name__ == '__main__':
         train_loss_list.append(train_loss)
         train_rec_loss_list.append(train_rec_loss)
         train_kld_loss_list.append(train_kld_loss)
-        train_nll_loss_list.append(train_nll_loss)
+        # train_nll_loss_list.append(train_nll_loss)
 
         if len(train_loss_list) > 0:
             if train_loss <= min(train_loss_list):
@@ -312,17 +325,20 @@ if __name__ == '__main__':
                 for file_name in os.listdir(model_checkpoint_dir):
                     if file_name.endswith('.pth'):
                         os.remove(os.path.join(model_checkpoint_dir, file_name))
-                torch.save(model.state_dict(), model_dir)
+
+                state = {
+                    'epoch': epoch,
+                    'state_dict': model.state_dict(),
+                    'optimizer': optimizer.state_dict()
+                }
+                torch.save(state, model_dir)
 
         schedular.step()
-        test_loss, test_rec_loss, test_kld_loss, test_nll_loss = test(epoch_test=epoch, model=model,
-                                                                      plot_dir=test_results_dir,
-                                                                      test_loader=test_loader,
-                                                                      plot_every_epoch=plot_every_epoch)
+        test_loss, test_rec_loss, test_kld_loss = test(epoch_test=epoch, model=model,plot_dir=test_results_dir,
+                                                       test_loader=test_loader, plot_every_epoch=plot_every_epoch)
         test_loss_list.append(test_loss)
         test_rec_loss_list.append(test_rec_loss)
         test_kld_loss_list.append(test_kld_loss)
-        test_nll_loss_list.append(test_nll_loss)
 
         tqdm.write(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Test Loss = {test_loss:.4f}")
 
@@ -334,8 +350,7 @@ if __name__ == '__main__':
                      'test_rec_loss': test_rec_loss_list,
                      'train_kld_loss': train_kld_loss_list,
                      'test_kld_loss': test_kld_loss_list,
-                     'train_nll_loss': train_nll_loss_list,
-                     'test_nll_loss': test_nll_loss_list}
+                     }
 
         # writer.add_scalar('Train/Loss', train_loss, epoch)
         # writer.add_scalar('Test/Loss', test_loss, epoch)

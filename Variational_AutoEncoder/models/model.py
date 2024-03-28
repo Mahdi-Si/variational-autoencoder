@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict
 from .misc import EncoderProjection, \
     DecoderProjection, \
     ScatteringNet
-
+from ..models.dataset_transform import ScatteringTransform
 class VAE(nn.Module):
     def __init__(self, input_size=None, input_dim=None, dec_hidden_dim=None, enc_hidden_dim=None,
                  latent_dim=None, latent_size=None, num_LSTM_layers=None, log_stat=None, device=None):
@@ -19,6 +19,10 @@ class VAE(nn.Module):
         self.st0_mean = 140.37047
         self.st0_std = 18.81198
         self.device = device
+
+        self.scattering_transform = ScatteringTransform(input_size=input_size, log_stat=log_stat, device=device)
+
+
         self.input_size = input_size  # size of the input signal
         self.input_dim = input_dim  # dimension of the input signal
         self.dec_hidden_dim = dec_hidden_dim
@@ -28,10 +32,10 @@ class VAE(nn.Module):
         self.num_LSTM_layers = num_LSTM_layers
         self.transform = ScatteringNet(J=11, Q=1, T=(2 ** (11 - 7)), shape=2400)
         self.encoder = LSTMEncoder(input_size=self.input_size, input_dim=self.input_dim,
-                                   hidden_dims=[13, 10, 7],
+                                   hidden_dims=self.enc_hidden_dim,
                                    latent_size=self.latent_size, latent_dim=self.latent_dim)
         self.decoder = LSTMDecoder(latent_size=self.latent_size, latent_dim=self.latent_dim,
-                                   hidden_dims=[7, 10, 13],
+                                   hidden_dims=self.dec_hidden_dim,
                                    output_dim=self.input_dim, output_size=self.input_size,
                                    num_layers=num_LSTM_layers)
         # self.enc_projection = EncoderProjection(seq_len=300, hidden_dim=256, latent_dim=128)
@@ -41,6 +45,8 @@ class VAE(nn.Module):
         self.linear_decoder_init = nn.Linear(self.latent_dim, input_size)
 
     def forward(self, x):
+
+        x__ = self.scattering_transform(x)
         batch_size, seq_len = x.shape
         original_input = x
         # x input shape(batch_size, signal_length)
