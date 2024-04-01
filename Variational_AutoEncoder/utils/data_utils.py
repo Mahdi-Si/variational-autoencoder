@@ -401,7 +401,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.savefig(plot_dir + '/' + tag + 'latent_hidden_kld' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
 
     i_row = 0
@@ -419,7 +419,8 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     for i in range(z_latent_mean.shape[0]):
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
+        ax2 = ax[i_row, 0].twinx()
+        ax2.plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
         marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
         plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
         plt.setp(marker_line, 'color', "#FC6736")
@@ -444,27 +445,61 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         # ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
 
-    plt.savefig(plot_dir + '/' + tag + '_latent-dims' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.savefig(plot_dir + '/' + tag + '_latent-dims' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
 
-    N_ROWS = 2*Sx.shape[0]
+    N_ROWS = kld_values.shape[0] + 1
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
-                           gridspec_kw={"width_ratios": [60, 1]}, squeeze=False)
+                           gridspec_kw={"width_ratios": [60, 1]})
+    t_1 = np.linspace(0, 10, kld_values.shape[1])
+    t_2 = np.linspace(0, 10, len(signal))
     i_row = -1
-    for i in range(Sx.shape[0]):
+    for i in range(kld_values.shape[0]):
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(Sx[i, :], linewidth=2, color="#003865")
-        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-        ax[i_row, 0].set_xticklabels([])
-        ax[i_row, 0].set_ylabel('Original Signal')
+        ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=2.5, color="#0C2D57")
 
-        i_row += 1
-        ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(new_sample[i, :], linewidth=1.5, color="#EF5B0C")
-
+        ax2 = ax[i_row, 0].twinx()
+        ax3 = ax[i_row, 0].twinx()
+        ax2.plot(t_1, Sxr_mean[0, :], linewidth=2.3, color="#FE7A36")
+        # for j in range(Sxr_mean.shape[0]):
+        #     ax2.plot(t_1, Sxr_mean[0, :], linewidth=1, label=f'{j}')
+        ax3.plot(t_2, signal, linewidth=2.3, color="#0D9276")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-        ax[i_row, 0].set_xticklabels([])
-        ax[i_row, 0].set_ylabel('New Sample')
-    plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        ax[i_row, 0].set_ylabel(f'KLD-{i}')
+    i_row += 1
+    ax[i_row, 1].set_axis_off()
+    ax[i_row, 0].plot(t_1, np.sum(kld_values, axis=0), linewidth=2.5, color="#0C2D57")
+    ax3 = ax[i_row, 0].twinx()
+    ax3.plot(t_2, signal, linewidth=2)
+
+    plt.savefig(plot_dir + '/' + tag + '_kld-values' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
+
+
+
+
+    # N_ROWS = 2*Sx.shape[0]
+    # fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+    #                        gridspec_kw={"width_ratios": [60, 1]}, squeeze=False)
+    # i_row = -1
+    # for i in range(Sx.shape[0]):
+    #     i_row += 1
+    #     ax[i_row, 1].set_axis_off()
+    #     ax[i_row, 0].plot(Sx[i, :], linewidth=2, color="#003865")
+    #     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    #     ax[i_row, 0].set_xticklabels([])
+    #     ax[i_row, 0].set_ylabel('Original Signal')
+    #
+    #     i_row += 1
+    #     ax[i_row, 1].set_axis_off()
+    #     ax[i_row, 0].plot(new_sample[i, :], linewidth=1.5, color="#EF5B0C")
+    #
+    #     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    #     ax[i_row, 0].set_xticklabels([])
+    #     ax[i_row, 0].set_ylabel('New Sample')
+    # plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    # plt.close(fig)
+
+    N_ROWS = 2 * Sx.shape[0]
+

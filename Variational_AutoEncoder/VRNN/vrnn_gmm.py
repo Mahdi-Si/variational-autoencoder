@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 import torch.distributions as tdist
-import math
 import torch
-import torch.nn as nn
+import math
 import torch.utils
 import torch.utils.data
-import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
@@ -18,8 +17,8 @@ from typing import List, Tuple, Dict
 from Variational_AutoEncoder.models.dataset_transform import ScatteringTransform
 
 
-"""implementation of the Variational Recurrent Neural Network (VRNN-Gauss) from https://arxiv.org/abs/1506.02216 using
-unimodal isotropic gaussian distributions for inference, prior, and generating models."""
+"""implementation of the Variational Recurrent Neural Network (VRNN-GMM) from https://arxiv.org/abs/1506.02216 using
+Gaussian mixture distributions with fixed number of mixtures for inference, prior, and generating models."""
 
 
 @dataclass
@@ -38,20 +37,16 @@ class VrnnForward:
     hidden_states: List[torch.Tensor] = None
 
 
-class VRNN_Gauss(nn.Module):
-    def __init__(self, input_dim, input_size, h_dim, z_dim, n_layers, device, log_stat, modify_z=None, modify_h=None,
-                 bias=False):
-        super(VRNN_Gauss, self).__init__()
-
+class VRNN_GMM(nn.Module):
+    def __init__(self,  input_dim, input_size, h_dim, z_dim, n_layers, device, log_stat, bias=False):
+        super(VRNN_GMM, self).__init__()
         self.input_dim = input_dim
         self.input_size = input_size
-        # self.u_dim = input_dim
         self.h_dim = h_dim
         self.z_dim = z_dim
         self.n_layers = n_layers
         self.device = device
-        self.modify_z = modify_z
-        self.modify_h = modify_h
+        self.n_mixtures = 5
 
         self.scattering_transform = ScatteringTransform(input_size=input_size, input_dim=input_dim, log_stat=log_stat,
                                                         device=device)
@@ -60,68 +55,70 @@ class VRNN_Gauss(nn.Module):
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),)
+            nn.Linear(self.h_dim, self.h_dim))
         # self.phi_u = nn.Sequential(
         #     nn.Linear(self.u_dim, self.h_dim),
         #     nn.ReLU(),
-        #     nn.Linear(self.h_dim, self.h_dim),)
+        #     nn.Linear(self.h_dim, self.h_dim))
         self.phi_z = nn.Sequential(
             nn.Linear(self.z_dim, self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),)
+            nn.Linear(self.h_dim, self.h_dim))
 
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
             nn.Linear(self.h_dim + self.h_dim, self.h_dim),
             nn.ReLU(),
             nn.Linear(self.h_dim, self.h_dim),
-            nn.ReLU(),)
+            nn.ReLU(), )
         self.enc_mean = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim))
         self.enc_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            nn.ReLU(),)
+            nn.ReLU(), )
 
         # prior function (phi_prior) -> Prior
         self.prior = nn.Sequential(
             nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim))
+            nn.Linear(self.h_dim, self.h_dim),
+            nn.ReLU(), )
         self.prior_mean = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim))
         self.prior_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            nn.ReLU(),)
+            nn.ReLU(), )
 
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
             nn.Linear(self.h_dim + self.h_dim, self.h_dim),
             nn.ReLU(),
             nn.Linear(self.h_dim, self.h_dim),
-            nn.ReLU(),)
+            nn.ReLU(), )
         self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, self.h_dim),
-            nn.ReLU(),
-            nn.Linear(self.h_dim, self.input_dim))
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures), )
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, self.input_dim),
-            nn.ReLU(),)
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.ReLU(), )
+        self.dec_pi = nn.Sequential(
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.Softmax(dim=1)
+        )
 
         # recurrence function (f_theta) -> Recurrence
-        self.rnn = nn.GRU(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True)
+        self.rnn = nn.GRU(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)
 
     def forward(self, y):
 
         y, meta = self.scattering_transform(y)
         scattering_original = y
-        #  batch size
-        batch_size = y.shape[0]
-        seq_len = y.shape[2]
+        # batch_size = y.size(0)
+        # seq_len = y.shape[-1]
+
         # allocation
         loss_ = 0
         loss = torch.zeros(1, device=self.device, requires_grad=True)
         # initialization
-        # h = torch.zeros(self.n_layers, batch_size, self.h_dim, device=self.device)
         h = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
 
         all_enc_mean, all_enc_std = [], []
@@ -132,13 +129,10 @@ class VRNN_Gauss(nn.Module):
         kld_loss = 0
         nll_loss = 0
 
-
-
         # for all time steps
         for t in range(y.size(0)):
             # feature extraction: y_t
-            # phi_y_t = self.phi_y(y[:, :, t])  # y original is shape (batch_size, input_size, input_dim)
-            phi_y_t = self.phi_y(y[t])  # should be (input_size, batch_size, input_dim)
+            phi_y_t = self.phi_y(y[t])
             # feature extraction: u_t
             # phi_u_t = self.phi_u(u[:, :, t])
 
@@ -153,43 +147,34 @@ class VRNN_Gauss(nn.Module):
             prior_logvar_t = self.prior_logvar(prior_t)
 
             # sampling and reparameterization: get a new z_t
-            temp = tdist.Normal(enc_mean_t, enc_logvar_t.exp().sqrt())  # creates a normal distribution object
-            z_t = tdist.Normal.rsample(temp)  # sampling from the distribution
-            if self.modify_z is not None:
-                modify_dims = self.modify_z.get('modify_dims')
-                scale = self.modify_z.get('scale')
-                shift = self.modify_z.get('shift')
-                z_t = self._modify_z(z=z_t, modify_dims=modify_dims, scale=scale, shift=shift)
-
+            temp = tdist.Normal(enc_mean_t, enc_logvar_t.exp().sqrt())
+            z_t = tdist.Normal.rsample(temp)
+            # feature extraction: z_t
+            phi_z_t = self.phi_z(z_t)
             # z_t = self._modify_z(z=z_t, modify_dims=[0, 1, 2, 3, 4], scale=0, shift=0)
             # z_t = self._modify_z(z=z_t, modify_dims=[0], scale=10, shift=10)
 
-           # feature extraction: z_t
-            phi_z_t = self.phi_z(z_t)
-
             # decoder: h_t, z_t -> y_t
             dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
-            dec_mean_t = self.dec_mean(dec_t)
-            dec_logvar_t = self.dec_logvar(dec_t)
-            pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
+
+            # todo it was batch_size, you change to y.size(1), check the view option
+            # dec_mean_t = self.dec_mean(dec_t).view(y.size(1), self.input_dim, self.n_mixtures)
+            # dec_logvar_t = self.dec_logvar(dec_t).view(y.size(1), self.input_dim, self.n_mixtures)
+            # dec_pi_t = self.dec_pi(dec_t).view(y.size(1), self.input_dim, self.n_mixtures)
+
+            dec_mean_t = self.dec_mean(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
+            dec_logvar_t = self.dec_logvar(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
+            dec_pi_t = self.dec_pi(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
 
             # recurrence: u_t+1, z_t -> h_t+1
-            # _, h = self.rnn(torch.cat([phi_u_t, phi_z_t], 1).unsqueeze(0), h)
-            _, h = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), h)  # phi_h_t
-            # h[:, :, [4, 5, 6, 7, 8]] = 0
-            if self.modify_h is not None:
-                modify_dims = self.modify_h.get('modify_dims')
-                scale = self.modify_h.get('scale')
-                shift = self.modify_h.get('shift')
-                h = self._modify_h(h=h, modify_dims=modify_dims, scale=scale, shift=shift)
+            _, h = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), h)
 
             # computing the loss
             KLD, kld_element = self.kld_gauss(enc_mean_t, enc_logvar_t, prior_mean_t, prior_logvar_t)
-            # loss_pred = torch.sum(pred_dist.log_prob(y[:, :, t]))
-            loss_pred = torch.sum(pred_dist.log_prob(y[t]))
+            loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t, dec_logvar_t, dec_pi_t)
+            # loss += - loss_pred
             loss = loss - loss_pred
             kld_loss = kld_loss + KLD
-
             all_h.append(h)
             all_kld.append(kld_element)
             all_enc_std.append(enc_logvar_t)
@@ -197,7 +182,6 @@ class VRNN_Gauss(nn.Module):
             all_dec_mean.append(dec_mean_t)
             all_dec_std.append(dec_logvar_t)
             all_z_t.append(z_t)
-
         results = VrnnForward(
             rec_loss=loss,
             kld_loss=kld_loss,
@@ -222,9 +206,10 @@ class VRNN_Gauss(nn.Module):
         seq_len = u.shape[-1]
 
         # allocation
-        sample = torch.zeros(batch_size, self.input_dim, seq_len, device=self.device)
-        sample_mu = torch.zeros(batch_size, self.input_dim, seq_len, device=self.device)
-        sample_sigma = torch.zeros(batch_size, self.input_dim, seq_len, device=self.device)
+        sample = torch.zeros(batch_size, self.y_dim, seq_len, device=self.device)
+        sample_mu = torch.zeros(batch_size, self.y_dim, seq_len, device=self.device)
+        sample_sigma = torch.zeros(batch_size, self.y_dim, seq_len, device=self.device)
+
         h = torch.zeros(self.n_layers, batch_size, self.h_dim, device=self.device)
 
         # for all time steps
@@ -240,27 +225,66 @@ class VRNN_Gauss(nn.Module):
             # sampling and reparameterization: get new z_t
             temp = tdist.Normal(prior_mean_t, prior_logvar_t.exp().sqrt())
             z_t = tdist.Normal.rsample(temp)
-
-            # z_t = self._modify_z(z=z_t, modify_dims=[0], scale=10, shift=10)
-            # z_t = self._modify_z(z=z_t, modify_dims=[0, 1, 2, 3], scale=10, shift=0)
             # feature extraction: z_t
             phi_z_t = self.phi_z(z_t)
 
             # decoder: z_t, h_t -> y_t
             dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
-            dec_mean_t = self.dec_mean(dec_t)
-            dec_logvar_t = self.dec_logvar(dec_t)
+            dec_mean_t = self.dec_mean(dec_t).view(batch_size, self.y_dim, self.n_mixtures)
+            dec_logvar_t = self.dec_logvar(dec_t).view(batch_size, self.y_dim, self.n_mixtures)
+            dec_pi_t = self.dec_pi(dec_t).view(batch_size, self.y_dim, self.n_mixtures)
+
             # store the samples
-            temp = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
-            sample[:, :, t] = tdist.Normal.rsample(temp)
-            # store mean and std
-            sample_mu[:, :, t] = dec_mean_t
-            sample_sigma[:, :, t] = dec_logvar_t.exp().sqrt()
+            sample[:, :, t], sample_mu[:, :, t], sample_sigma[:, :, t] = self._reparameterized_sample_gmm(dec_mean_t,
+                                                                                                          dec_logvar_t,
+                                                                                                          dec_pi_t)
 
             # recurrence: u_t+1, z_t -> h_t+1
             _, h = self.rnn(torch.cat([phi_u_t, phi_z_t], 1).unsqueeze(0), h)
 
         return sample, sample_mu, sample_sigma
+
+    def _reparameterized_sample_gmm(self, mu, logvar, pi):
+
+        # select the mixture indices
+        alpha = torch.distributions.Categorical(pi).sample()
+
+        # select the mixture indices
+        idx = logvar.shape[-1]
+        raveled_index = torch.arange(len(alpha.flatten()), device=self.device) * idx + alpha.flatten()
+        logvar_sel = logvar.flatten()[raveled_index]
+        mu_sel = mu.flatten()[raveled_index]
+
+        # get correct dimensions
+        logvar_sel = logvar_sel.view(logvar.shape[:-1])
+        mu_sel = mu_sel.view(mu.shape[:-1])
+
+        # resample
+        temp = tdist.Normal(mu_sel, logvar_sel.exp().sqrt())
+        sample = tdist.Normal.rsample(temp)
+
+        return sample, mu_sel, logvar_sel.exp().sqrt()
+
+    def loglikelihood_gmm(self, x, mu, logvar, pi):
+        # init
+        loglike = 0
+        # x (batch_size, input_dim)
+        # logvar (input_dim, batch_size, n_gmm)
+        # mu (input_dim, batch_size, n_gmm)
+        # pi (input_dim, batch_size, n_gmm)
+        # for all data channels
+        for n in range(x.shape[1]):
+            # likelihood of a single mixture at evaluation point
+            pred_dist = tdist.Normal(mu[:, n, :], logvar[:, n, :].exp().sqrt())
+            x_mod = torch.mm(x[:, n].unsqueeze(1), torch.ones(1, self.n_mixtures, device=self.device))
+            like = pred_dist.log_prob(x_mod)
+            # weighting by probability of mixture and summing
+            temp = (pi[:, n, :] * like)
+            temp = temp.sum()
+            # log-likelihood added to previous log-likelihoods
+            loglike = loglike + temp
+
+        return loglike
 
     @staticmethod
     def kld_gauss(mu_q, logvar_q, mu_p, logvar_p):
@@ -274,23 +298,8 @@ class VRNN_Gauss(nn.Module):
 
         return kld, final_term
 
-    def init_rnn_output(self, batch_size, seq_len):
-        phi_h_t = torch.zeros(batch_size, seq_len, self.h_dim).to(self.device)
-
-        return phi_h_t
-
     @staticmethod
     def _modify_z(z, modify_dims, shift, scale):
         for i in modify_dims:
             z[:, i] = scale * z[:, i] + shift
         return z
-
-    @staticmethod
-    def _modify_h(h, modify_dims, shift, scale):
-        if h.dim == 3:
-            for i in modify_dims:
-                h[:, :, i] = scale * h[:, :, i] + shift
-        elif h.dim == 2:
-            for i in modify_dims:
-                h[:, i] = scale * h[:, i] + shift
-        return h

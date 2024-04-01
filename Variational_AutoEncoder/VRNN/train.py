@@ -19,6 +19,7 @@ import torch.nn.functional as F
 import numpy as np
 import builtins
 from vrnn_gauss import VRNN_Gauss
+from vrnn_gmm import VRNN_GMM
 # from torch.utils.tensorboard import SummaryWriter
 
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
@@ -271,8 +272,12 @@ if __name__ == '__main__':
     plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
-    model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+    # model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+    #                    n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+
+    model = VRNN_GMM(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                        n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+
     print(f'Model:  \n {model}')
     print('==' * 50)
     model = model.to(device)

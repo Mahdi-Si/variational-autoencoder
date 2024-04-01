@@ -1,5 +1,5 @@
 general_config:
-  tag: Change_all
+  tag: vrnn_gauss_tests_z_allzero
   checkpoint_path: null
   lr: 0.001
   weight_decay: 0.0
@@ -14,10 +14,10 @@ model_config:
     raw_input_size: 2400
     input_size: 150
     input_dim: 11
-    RNN_hidden_dim: 50
-    latent_size: 4
+    RNN_hidden_dim: 330
+    latent_size: 5
     num_RNN_layers: 4
-    kld_beta: 250
+    kld_beta: 0.2
 
 
 folders_config:
