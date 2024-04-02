@@ -19,9 +19,10 @@ import torch.nn.functional as F
 import numpy as np
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
-    calculate_stats, plot_scattering_v2, plot_loss_dict, plot_averaged_results
+    calculate_stats, plot_scattering_v2, plot_loss_dict, plot_averaged_results, plot_general_mse
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage
 from vrnn_gauss import VRNN_Gauss
+
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # remove this line when creating a new environment
 
@@ -30,6 +31,67 @@ if torch.cuda.is_available():
     torch.cuda.empty_cache()
 else:
     device = torch.device('cpu')
+
+
+def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, base_dir=None, tag='_'):
+    save_dir = os.path.join(base_dir, tag)
+    os.makedirs(save_dir, exist_ok=True)
+    model_t.modify_z = modify_z
+    model_t.modify_h = modify_h
+    model_t.to(device)
+    model_t.eval()
+    mse_all_data = torch.empty((0, input_dim_t)).to(device)
+    with torch.no_grad():
+        for j, batched_data_t in tqdm(enumerate(data_loader), total=len(data_loader)):
+            batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
+            results_t = model_t(batched_data_t)
+            z_latent_t_ = torch.stack(results_t.z_latent, dim=2)  # (batch_size, latent_dim, 150)
+            h_hidden_t_ = torch.stack(results_t.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
+            h_hidden_t__ = torch.sum(h_hidden_t_, dim=0).permute(0, 2, 1)
+            dec_mean_t_ = torch.stack(results_t.decoder_mean, dim=2)  # (batch_size, input_dim, 150)
+            dec_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.decoder_std, dim=2)))
+            Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
+            enc_mean_t_ = torch.stack(results_t.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
+            enc_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.encoder_std, dim=2)))
+            kld_values_t_ = torch.stack(results_t.kld_values, dim=2)
+
+            mse_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2)/Sx_t_.size(-1)
+            mse_all_data = torch.cat((mse_all_data, mse_coefficients), dim=0)
+            selected_idx = np.random.randint(0, batched_data_t.shape[0], 5)
+            for idx in selected_idx:
+                selected_signal = batched_data_t[idx]
+                Sx = Sx_t_[idx]  # might need to permute (1, 0)
+                z_latent = z_latent_t_[idx]
+                # z_latent = h_hidden__[idx]
+                z_latent_mean = z_latent
+                z_latent_std = enc_std_t_[idx]
+                kld_values = kld_values_t_[idx]
+                dec_mean_mean = dec_mean_t_[idx]
+                dec_mean_std = dec_std_t_[idx]
+                h_hidden = h_hidden_t__[idx]
+                plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                                      Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
+                                      Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                      z_latent_mean=z_latent_mean.detach().cpu().numpy(),
+                                      z_latent_std=z_latent_std.detach().cpu().numpy(),
+                                      kld_values=kld_values.detach().cpu().numpy(),
+                                      h_hidden_mean=h_hidden.detach().cpu().numpy(),
+                                      plot_latent=True,
+                                      plot_klds=True,
+                                      plot_state=True,
+                                      # new_sample=new_sample.detach().cpu().numpy(),
+                                      plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+                plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                                   Sx=Sx.detach().cpu().numpy(), meta=None,
+                                   Sxr=dec_mean_mean.detach().cpu().numpy(),
+                                   Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                   z_latent=z_latent_mean.detach().cpu().numpy(),
+                                   plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+        plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
+                         tag='mses',
+                         plot_dir=save_dir)
+
+
 
 
 if __name__ == '__main__':
@@ -117,45 +179,56 @@ if __name__ == '__main__':
     model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                        n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    model.modify_z = {'modify_dims': [0], 'scale': 0, 'shift': 0}
-    model.modify_h = {'modify_dims': [0, 1, 2], 'scale': 10, 'shift': 20}
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h330_l5\VRNN-282.pth")
+
+    # model.modify_h = {'modify_dims': [0, 1, 2], 'scale': 10, 'shift': 20}
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h11-l5\VRNN-3648.pth")
     # checkpoint = torch.load(check_point_path, map_location='cpu')
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint['state_dict'])
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
+    run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None, modify_z=None,
+             base_dir=inference_results_dir, tag='test_1')
+    for i in range(latent_dim):
+        modify_dims_z = list(range(0, latent_dim))
+        scale = [int(x) for x in np.zeros(latent_dim)]
+        scale[i] = int(10)
+        shift = [int(x) for x in np.zeros(latent_dim)]
+        modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
 
-    model = model.to(device)
-    model.eval()
-    with torch.no_grad():
-        for i, batched_data in tqdm(enumerate(data_loader_healthy), total=len(data_loader_healthy)):
-            batched_data = batched_data.to(device)   # (batch_size, signal_len)
-            # rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(batched_data)
-            results = model(batched_data)
-            z_latent_ = torch.stack(results.z_latent, dim=2)  # (batch_size, latent_dim, 150)
-            h_hidden_ = torch.stack(results.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
-            h_hidden__ = torch.sum(h_hidden_, dim=0).permute(0, 2, 1)
-            dec_mean_ = torch.stack(results.decoder_mean, dim=2)  # (batch_size, input_dim, 150)
-            dec_std_ = torch.sqrt(torch.exp(torch.stack(results.decoder_std, dim=2)))
-            Sx_ = results.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
-            enc_mean_ = torch.stack(results.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
-            enc_std_ = torch.sqrt(torch.exp(torch.stack(results.encoder_std, dim=2)))
-            kld_values_ = torch.stack(results.kld_values, dim=2)
-
-            selected_idx = np.random.randint(0, batched_data.shape[0], 5)
-            for idx in selected_idx:
-                selected_signal = batched_data[idx]
-                Sx = Sx_[idx]  # might need to permute (1, 0)
-                z_latent = z_latent_[idx]
-                # z_latent = h_hidden__[idx]
-                z_latent_mean = z_latent
-                z_latent_std = enc_std_[idx]
-                kld_values = kld_values_[idx]
-                dec_mean_mean = dec_mean_[idx]
-                dec_mean_std = dec_std_[idx]
-                h_hidden = h_hidden__[idx]
+        run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
+                 modify_z=modify_z_dict,
+                 base_dir=inference_results_dir, tag=f'dim_{i}')
+    # model = model.to(device)
+    # model.eval()
+    # with torch.no_grad():
+    #     for i, batched_data in tqdm(enumerate(data_loader_healthy), total=len(data_loader_healthy)):
+    #         batched_data = batched_data.to(device)   # (batch_size, signal_len)
+    #         # rec_loss, kld_loss, nll_loss, _, (dec_mean, dec_std), (Sx, meta), z_latent = model(batched_data)
+    #         results = model(batched_data)
+    #         z_latent_ = torch.stack(results.z_latent, dim=2)  # (batch_size, latent_dim, 150)
+    #         h_hidden_ = torch.stack(results.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
+    #         h_hidden__ = torch.sum(h_hidden_, dim=0).permute(0, 2, 1)
+    #         dec_mean_ = torch.stack(results.decoder_mean, dim=2)  # (batch_size, input_dim, 150)
+    #         dec_std_ = torch.sqrt(torch.exp(torch.stack(results.decoder_std, dim=2)))
+    #         Sx_ = results.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
+    #         enc_mean_ = torch.stack(results.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
+    #         enc_std_ = torch.sqrt(torch.exp(torch.stack(results.encoder_std, dim=2)))
+    #         kld_values_ = torch.stack(results.kld_values, dim=2)
+    #
+    #         selected_idx = np.random.randint(0, batched_data.shape[0], 5)
+            # for idx in selected_idx:
+            #     selected_signal = batched_data[idx]
+            #     Sx = Sx_[idx]  # might need to permute (1, 0)
+            #     z_latent = z_latent_[idx]
+            #     # z_latent = h_hidden__[idx]
+            #     z_latent_mean = z_latent
+            #     z_latent_std = enc_std_[idx]
+            #     kld_values = kld_values_[idx]
+            #     dec_mean_mean = dec_mean_[idx]
+            #     dec_mean_std = dec_std_[idx]
+            #     h_hidden = h_hidden__[idx]
 
                 # # selected_signal = batched_data[idx].detach().cpu().numpy()
                 # repeated_signal = selected_signal.repeat(1, 1)
@@ -166,8 +239,8 @@ if __name__ == '__main__':
                 # kld_values = torch.stack(results.kld_values, dim=2)
                 # z_latent_mean = z_latent_.mean(dim=0)
                 # z_latent_std = z_latent_.std(dim=0)
-                # # z_latent_mean = torch.stack(results.encoder_mean, dim=2).squeeze(0)  # todo check this
-                # # z_latent_std = torch.stack(results.encoder_std, dim=2).squeeze(0)  # todo check this
+                # # z_latent_mean = torch.stack(results.encoder_mean, dim=2).squeeze(0)
+                # # z_latent_std = torch.stack(results.encoder_std, dim=2).squeeze(0)
                 # # h_hidden_mean = h_hidden_.mean(dim=0).permute(1, 0)
                 # # h_hidden_std = h_hidden_.std(dim=0).permute(1, 0)
                 # dec_mean_ = torch.stack(results.decoder_mean, dim=2)
@@ -175,21 +248,21 @@ if __name__ == '__main__':
                 # dec_mean_std = dec_mean_.std(dim=0)
                 # kld_values_mean = kld_values.mean(dim=0)
                 # kld_values_mean[:, 0:7] = kld_values_mean[:, 7:8].expand(-1, 7)
-                plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
-                                      Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
-                                      Sxr_std=dec_mean_std.detach().cpu().numpy(),
-                                      z_latent_mean=z_latent_mean.detach().cpu().numpy(),
-                                      z_latent_std=z_latent_std.detach().cpu().numpy(),
-                                      kld_values=kld_values.detach().cpu().numpy(),
-                                      h_hidden_mean=h_hidden.detach().cpu().numpy(),
-                                      # new_sample=new_sample.detach().cpu().numpy(),
-                                      plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}_average')
-                plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
-                                   Sx=Sx.detach().cpu().numpy(), meta=None,
-                                   Sxr=dec_mean_mean.detach().cpu().numpy(),
-                                   Sxr_std=dec_mean_std.detach().cpu().numpy(),
-                                   z_latent=z_latent_mean.detach().cpu().numpy(),
-                                   plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}')
+                # plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                #                       Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
+                #                       Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                #                       z_latent_mean=z_latent_mean.detach().cpu().numpy(),
+                #                       z_latent_std=z_latent_std.detach().cpu().numpy(),
+                #                       kld_values=kld_values.detach().cpu().numpy(),
+                #                       h_hidden_mean=h_hidden.detach().cpu().numpy(),
+                #                       # new_sample=new_sample.detach().cpu().numpy(),
+                #                       plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}_average')
+                # plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                #                    Sx=Sx.detach().cpu().numpy(), meta=None,
+                #                    Sxr=dec_mean_mean.detach().cpu().numpy(),
+                #                    Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                #                    z_latent=z_latent_mean.detach().cpu().numpy(),
+                #                    plot_dir=inference_results_dir, tag=f'infer_test_{i}_{idx}')
 
                 # fig, ax = plt.subplots(nrows=z_latent_selected.shape[0], ncols=1, figsize=(20, 36))
                 # i_row = 0

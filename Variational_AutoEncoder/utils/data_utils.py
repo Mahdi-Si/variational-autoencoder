@@ -308,7 +308,8 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
 
 
 def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None, h_hidden_mean=None,
-                          h_hidden_std=None,z_latent_std=None, kld_values=None, plot_dir=None, new_sample=None, tag=''):
+                          h_hidden_std=None, z_latent_std=None, kld_values=None, plot_dir=None, new_sample=None,
+                          plot_latent=False, plot_klds=False, plot_state=False, tag=''):
     Fs = 4
     log_eps = 1e-3
     N = len(signal)
@@ -319,15 +320,18 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     plt.set_cmap(cmstr)
     plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
     i_row = 0
-
+    # plot st vs reconstructed st, kld, hidden sates and each latent variable ------------------------------------------
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                            gridspec_kw={"width_ratios": [60, 1]})
+
+    # plot true fhr
     ax[i_row, 1].set_axis_off()
     ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
 
+    # plot latent z difference
     i_row += 1
     z_diff = np.diff(z_latent_mean, axis=1)
     z_diff_squared_sum = np.square(z_diff).sum(axis=0)
@@ -401,80 +405,134 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + 'latent_hidden_kld' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.savefig(plot_dir + '/' + tag + 'overall' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
     plt.close(fig)
+    # ------------------------------------------------------------------------------------------------------------------
+    # plot latent dim and histogram of it
+    if plot_latent:
+        i_row = 0
+        N_ROWS = 1 * z_latent_mean.shape[0] + z_latent_mean.shape[0] * Sx.shape[0] + 2
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                               gridspec_kw={"width_ratios": [60, 1]})
+        t_original = np.linspace(0, 1, len(signal))
+        t_reduced = np.linspace(0, 1, Sx.shape[1])
 
-    i_row = 0
-    N_ROWS = 2*z_latent_mean.shape[0] + 2
-    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
-                           gridspec_kw={"width_ratios": [60, 1]})
-    t_original = np.linspace(0, 1, len(signal))
-    t_reduced = np.linspace(0, 1, Sx.shape[1])
-
-    ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
-    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-    ax[i_row, 0].set_xticklabels([])
-    ax[i_row, 0].set_ylabel(f'FHR')
-    for i in range(z_latent_mean.shape[0]):
-        i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax2 = ax[i_row, 0].twinx()
-        ax2.plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
-        marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
-        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
-        plt.setp(marker_line, 'color', "#FC6736")
+        ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
-        ax[i_row, 0].set_ylabel(f'Latent Dim {i}')
+        ax[i_row, 0].set_ylabel(f'FHR')
+        for j in range(Sx.shape[0]):
+            for i in range(z_latent_mean.shape[0]):
+                i_row += 1
+                ax[i_row, 1].set_axis_off()
+                ax2 = ax[i_row, 0].twinx()
+                ax2.plot(t_reduced, Sx[j, :], linewidth=1.5, color="#0C2D57")
+                marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
+                plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+                plt.setp(marker_line, 'color', "#FC6736")
+                ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+                ax[i_row, 0].set_xticklabels([])
+                ax[i_row, 0].set_ylabel(f'Latent Dim {i} Coefficient {j}')
 
-    i_row += 1
-    ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
-    marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(z_latent_mean, axis=0), basefmt=" ")
-    plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
-    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-    ax[i_row, 0].set_xticklabels([])
-    ax[i_row, 0].set_ylabel(f'Latent Dim Averaged')
-
-    for i in range(z_latent_mean.shape[0]):
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].hist(z_latent_mean[i, :], bins=40, alpha=0.6, color='blue')
+        ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
+        marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(z_latent_mean, axis=0), basefmt=" ")
+        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-        # ax[i_row, 0].set_xticklabels([])
-        ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'Latent Dim Averaged')
 
-    plt.savefig(plot_dir + '/' + tag + '_latent-dims' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
-    plt.close(fig)
+        for i in range(z_latent_mean.shape[0]):
+            i_row += 1
+            ax[i_row, 1].set_axis_off()
+            ax[i_row, 0].hist(z_latent_mean[i, :], bins=40, alpha=0.6, color='blue')
+            ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+            # ax[i_row, 0].set_xticklabels([])
+            ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
 
-    N_ROWS = kld_values.shape[0] + 1
-    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
-                           gridspec_kw={"width_ratios": [60, 1]})
-    t_1 = np.linspace(0, 10, kld_values.shape[1])
-    t_2 = np.linspace(0, 10, len(signal))
-    i_row = -1
-    for i in range(kld_values.shape[0]):
+        plt.savefig(plot_dir + '/' + tag + '_latent' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.close(fig)
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # plot hidden dims -------------------------------------------------------------------------------------------------
+    if plot_state:
+        i_row = 0
+        # N_ROWS = 1 * h_hidden_mean.shape[0] + h_hidden_mean.shape[0] * Sx.shape[0] + 2
+        N_ROWS = 1 * h_hidden_mean.shape[0] + h_hidden_mean.shape[0] * 1 + 2
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                               gridspec_kw={"width_ratios": [60, 1]})
+        t_original = np.linspace(0, 1, len(signal))
+        t_reduced = np.linspace(0, 1, Sx.shape[1])
+
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'FHR')
+        # for j in range(Sx.shape[0]):
+        for i in range(h_hidden_mean.shape[0]):
+            i_row += 1
+            ax[i_row, 1].set_axis_off()
+            ax2 = ax[i_row, 0].twinx()
+            ax2.plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
+            marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*h_hidden_mean[i, :], basefmt=" ")
+            plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+            plt.setp(marker_line, 'color', "#FC6736")
+            ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+            ax[i_row, 0].set_xticklabels([])
+            ax[i_row, 0].set_ylabel(f'Latent Dim {i} Coefficient 0')
+
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=2.5, color="#0C2D57")
+        ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
+        marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(h_hidden_mean, axis=0), basefmt=" ")
+        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'Hidden Dim Averaged')
 
-        ax2 = ax[i_row, 0].twinx()
+        for i in range(z_latent_mean.shape[0]):
+            i_row += 1
+            ax[i_row, 1].set_axis_off()
+            ax[i_row, 0].hist(z_latent_mean[i, :], bins=40, alpha=0.6, color='blue')
+            ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+            # ax[i_row, 0].set_xticklabels([])
+            ax[i_row, 0].set_ylabel(f'Hidden Dim Histogram {i}')
+
+        plt.savefig(plot_dir + '/' + tag + '_hidden' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.close(fig)
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # plot kld values separately
+    if plot_klds:
+        N_ROWS = Sx.shape[0] * kld_values.shape[0] + 1
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                               gridspec_kw={"width_ratios": [60, 1]})
+        t_1 = np.linspace(0, 10, kld_values.shape[1])
+        t_2 = np.linspace(0, 10, len(signal))
+        i_row = -1
+        for j in range(Sx.shape[0]):
+            for i in range(kld_values.shape[0]):
+                i_row += 1
+                ax[i_row, 1].set_axis_off()
+                ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=2, color="#0C2D57")
+
+                ax2 = ax[i_row, 0].twinx()
+                ax3 = ax[i_row, 0].twinx()
+                ax2.plot(t_1, Sxr_mean[j, :], linewidth=2, color="#FE7A36")
+                # ax3.plot(t_2, signal, linewidth=2, color="#0D9276")
+                ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+                ax[i_row, 0].set_ylabel(f'KLD-Latent{i}-Sx{j}')
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(t_1, np.sum(kld_values, axis=0), linewidth=2, color="#0C2D57")
         ax3 = ax[i_row, 0].twinx()
-        ax2.plot(t_1, Sxr_mean[0, :], linewidth=2.3, color="#FE7A36")
-        # for j in range(Sxr_mean.shape[0]):
-        #     ax2.plot(t_1, Sxr_mean[0, :], linewidth=1, label=f'{j}')
-        ax3.plot(t_2, signal, linewidth=2.3, color="#0D9276")
-        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
-        ax[i_row, 0].set_ylabel(f'KLD-{i}')
-    i_row += 1
-    ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_1, np.sum(kld_values, axis=0), linewidth=2.5, color="#0C2D57")
-    ax3 = ax[i_row, 0].twinx()
-    ax3.plot(t_2, signal, linewidth=2)
+        ax3.plot(t_2, signal, linewidth=2)
 
-    plt.savefig(plot_dir + '/' + tag + '_kld-values' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
-    plt.close(fig)
+        plt.savefig(plot_dir + '/' + tag + '_klds' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.close(fig)
 
 
 
@@ -502,4 +560,28 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     # plt.close(fig)
 
     N_ROWS = 2 * Sx.shape[0]
+
+
+def plot_general_mse(signal=None, plot_order=None, Sx=None, meta=None,
+                     Sxr=None, Sxr_std=None, z_latent=None, plot_dir=None, tag='',
+                     all_mse=None):
+
+    cmstr = 'Blues'
+    plt.set_cmap(cmstr)
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+    i_row = -1
+    N_ROWS = (all_mse.shape[0])
+    max_mse_value = np.max(all_mse)
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                           gridspec_kw={"width_ratios": [80, 1]})
+    for i in range(N_ROWS):
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(all_mse[i, :], linewidth=1.5, marker='.', ms=1)
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_ylim(0, max_mse_value)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel(f'mse coefficient {i}')
+    plt.savefig(plot_dir + '/' + tag + '_mses' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.close(fig)
 

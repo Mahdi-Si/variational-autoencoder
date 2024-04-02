@@ -14,10 +14,10 @@ model_config:
     raw_input_size: 2400
     input_size: 150
     input_dim: 11
-    RNN_hidden_dim: 330
+    RNN_hidden_dim: 11
     latent_size: 5
     num_RNN_layers: 4
-    kld_beta: 0.2
+    kld_beta: 1
 
 
 folders_config:

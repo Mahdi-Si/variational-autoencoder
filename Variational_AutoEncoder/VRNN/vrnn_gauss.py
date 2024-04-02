@@ -282,7 +282,7 @@ class VRNN_Gauss(nn.Module):
     @staticmethod
     def _modify_z(z, modify_dims, shift, scale):
         for i in modify_dims:
-            z[:, i] = scale * z[:, i] + shift
+            z[:, i] = scale[i] * z[:, i] + shift[i]
         return z
 
     @staticmethod
