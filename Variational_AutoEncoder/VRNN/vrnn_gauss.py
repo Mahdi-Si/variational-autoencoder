@@ -199,18 +199,18 @@ class VRNN_Gauss(nn.Module):
             all_z_t.append(z_t)
 
         results = VrnnForward(
-            rec_loss=loss,
-            kld_loss=kld_loss,
-            nll_loss=nll_loss,
-            encoder_mean=all_enc_mean,
-            encoder_std=all_enc_std,
-            decoder_mean=all_dec_mean,
-            decoder_std=all_dec_std,
-            kld_values=all_kld,
-            Sx=scattering_original,
+            rec_loss=loss,  # (1,)
+            kld_loss=kld_loss,  # ()
+            nll_loss=loss,
+            encoder_mean=all_enc_mean,  # list(input_size) -> each element: (batch_size, latent_dim)
+            encoder_std=all_enc_std,  # list(input_size) -> each element: (batch_size, latent_dim)
+            decoder_mean=all_dec_mean,  # list(input_size) -> each element: (batch_size, input_dim)
+            decoder_std=all_dec_std,  # list(input_size) -> each element: (batch_size, input_dim)
+            kld_values=all_kld,  # list(input_size) -> each element: (batch_size, latent_dim)
+            Sx=scattering_original,  # (input_size, batch_size, input_dim)
             Sx_meta=meta,
-            z_latent=all_z_t,
-            hidden_states=all_h
+            z_latent=all_z_t,  # list(input_size) -> each element: (batch_size, latent_dim)
+            hidden_states=all_h   # list(input_size) -> each element: (n_layers, batch_size, input_dim)
         )
 
         return results
@@ -280,6 +280,7 @@ class VRNN_Gauss(nn.Module):
         return phi_h_t
 
     @staticmethod
+    # todo make it same is _modify_h
     def _modify_z(z, modify_dims, shift, scale):
         for i in modify_dims:
             z[:, i] = scale[i] * z[:, i] + shift[i]
@@ -287,10 +288,10 @@ class VRNN_Gauss(nn.Module):
 
     @staticmethod
     def _modify_h(h, modify_dims, shift, scale):
-        if h.dim == 3:
-            for i in modify_dims:
-                h[:, :, i] = scale * h[:, :, i] + shift
-        elif h.dim == 2:
-            for i in modify_dims:
-                h[:, i] = scale * h[:, i] + shift
+        if h.dim() == 3:
+            for index, dim in enumerate(modify_dims):
+                h[:, :, dim] = scale[index] * h[:, :, dim] + shift[index]
+        elif h.dim() == 2:
+            for index, dim in enumerate(modify_dims):
+                h[:, dim] = scale[index] * h[:, dim] + shift[index]
         return h

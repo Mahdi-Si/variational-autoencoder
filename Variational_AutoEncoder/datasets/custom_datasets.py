@@ -51,9 +51,12 @@ class JsonDatasetPreload(Dataset):
         sample_data = self.samples[idx]
         fhr = torch.tensor(sample_data['fhr'])
         up = torch.tensor(sample_data['up'])
+        guid = sample_data['GUID']
+        start_time = sample_data['domain_starts']
         target = torch.tensor(sample_data['target'])
         sample_weight = torch.tensor(sample_data['sample_weights'])
         # return fhr, target, sample_weight
+        # return fhr, guid, start_time, target, sample_weight
         return fhr
 
 

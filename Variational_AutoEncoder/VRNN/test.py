@@ -22,7 +22,7 @@ from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_origi
     calculate_stats, plot_scattering_v2, plot_loss_dict, plot_averaged_results, plot_general_mse
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage
 from vrnn_gauss import VRNN_Gauss
-
+from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # remove this line when creating a new environment
 
@@ -47,8 +47,13 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
             results_t = model_t(batched_data_t)
             z_latent_t_ = torch.stack(results_t.z_latent, dim=2)  # (batch_size, latent_dim, 150)
             h_hidden_t_ = torch.stack(results_t.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
-            h_hidden_t__ = torch.sum(h_hidden_t_, dim=0).permute(0, 2, 1)
-            dec_mean_t_ = torch.stack(results_t.decoder_mean, dim=2)  # (batch_size, input_dim, 150)
+            if h_hidden_t_.dim() == 4:
+                h_hidden_t__ = h_hidden_t_[-1].permute(0, 2, 1)
+            else:
+                h_hidden_t__ = h_hidden_t_.permute(0, 2, 1)
+            # h_didden_t__ (batch_size, input_dim, input_size)
+            # h_hidden_t__ = torch.sum(h_hidden_t_, dim=0).permute(0, 2, 1)
+            dec_mean_t_ = torch.stack(results_t.decoder_mean, dim=2)  # (batch_size, input_dim, input_size)
             dec_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.decoder_std, dim=2)))
             Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
             enc_mean_t_ = torch.stack(results_t.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
@@ -57,7 +62,8 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
 
             mse_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2)/Sx_t_.size(-1)
             mse_all_data = torch.cat((mse_all_data, mse_coefficients), dim=0)
-            selected_idx = np.random.randint(0, batched_data_t.shape[0], 5)
+            # selected_idx = np.random.randint(0, batched_data_t.shape[0], 10)
+            selected_idx = [0, 1]
             for idx in selected_idx:
                 selected_signal = batched_data_t[idx]
                 Sx = Sx_t_[idx]  # might need to permute (1, 0)
@@ -87,9 +93,16 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
                                    Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                    z_latent=z_latent_mean.detach().cpu().numpy(),
                                    plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+        # mse_all_data (dataset_size, input_dim)
         plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
                          tag='mses',
                          plot_dir=save_dir)
+        mse_average = mse_all_data.mean(dim=0)
+        print('==' * 50)
+        print(f'MSE each dim: {mse_average}')
+        print(f'MSE average: {mse_average.sum()}')
+        print('==' * 50)
+
 
 
 
@@ -121,22 +134,23 @@ if __name__ == '__main__':
             os.makedirs(folder)
 
     # setting up the logging -------------------------------------------------------------------------------------------
-    # log_file = os.path.join(train_results_dir, 'log.txt')
-    # logging.basicConfig(filename=log_file,
-    #                     filemode='w',
-    #                     format='%(asctime)s - %(levelname)s - %(message)s',
-    #                     level=logging.INFO)
-    #
-    # sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
-    #
-    # print(yaml.dump(config, sort_keys=False, default_flow_style=False))
-    # print('==' * 50)
+    log_file = os.path.join(inference_results_dir, 'log.txt')
+    logging.basicConfig(filename=log_file,
+                        filemode='w',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        level=logging.INFO)
+
+    sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
+
+    print(yaml.dump(config, sort_keys=False, default_flow_style=False))
+    print('==' * 50)
     # Preparing training and testing datasets --------------------------------------------------------------------------
     dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
     aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
     # batch_size = config['general_config']['batch_size']['train']
-    batch_size = 1024
+    batch_size = 2
+    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     data_loader_healthy = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
@@ -181,25 +195,40 @@ if __name__ == '__main__':
     params = model.parameters()
 
     # model.modify_h = {'modify_dims': [0, 1, 2], 'scale': 10, 'shift': 20}
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h11-l5\VRNN-3648.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\H11-L5-2\VRNN-4000.pth")
     # checkpoint = torch.load(check_point_path, map_location='cpu')
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint['state_dict'])
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
-    run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None, modify_z=None,
-             base_dir=inference_results_dir, tag='test_1')
-    for i in range(latent_dim):
-        modify_dims_z = list(range(0, latent_dim))
-        scale = [int(x) for x in np.zeros(latent_dim)]
-        scale[i] = int(10)
-        shift = [int(x) for x in np.zeros(latent_dim)]
-        modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
+    # run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None, modify_z=None,
+    #          base_dir=inference_results_dir, tag='test_1')
+    # for i in range(latent_dim):
+    #     modify_dims_z = list(range(0, latent_dim))
+    #     # scale = [int(x) for x in np.zeros(latent_dim)]
+    #     scale = np.zeros(latent_dim).astype(int).tolist()
+    #     scale[i] = int(20)
+    #     shift = [int(x) for x in np.zeros(latent_dim)]
+    #     modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
+    #     print(f'modified z {i}: \n {modify_z_dict}')
+    #     print('=='*50)
+    #
+    #     run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
+    #              modify_z=modify_z_dict,
+    #              base_dir=inference_results_dir, tag=f'dim_{i}')
 
-        run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-                 modify_z=modify_z_dict,
-                 base_dir=inference_results_dir, tag=f'dim_{i}')
+    for i in range(0, rnn_hidden_dim):
+        modify_dims_h = [int(i)]
+        scale = [int(0)]
+        shift = [int(0)]
+        modify_h_dict = {'modify_dims': modify_dims_h, 'scale': scale, 'shift': shift}
+        print(f'modified z {i}: \n {modify_h_dict}')
+        print('=='*50)
+
+        run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_z=None,
+                 modify_h=modify_h_dict,
+                 base_dir=inference_results_dir, tag=f'hidden_{i}')
     # model = model.to(device)
     # model.eval()
     # with torch.no_grad():

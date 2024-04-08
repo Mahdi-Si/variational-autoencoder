@@ -57,7 +57,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
         optimizer.zero_grad()
         results = model(data)
         # loss = results.kld_loss + results.nll_loss
-        loss = (kld_beta * results.kld_loss) + results.rec_loss
+        loss = (kld_beta * results.kld_loss) + results.nll_loss
         loss.backward()
         optimizer.step()
         kld_loss_epoch += results.kld_loss.item()
@@ -81,10 +81,10 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
                 z_latent = torch.stack(results_.z_latent, dim=2)
                 # sample = model.sample(torch.tensor(150, device=device))
                 dec_mean_tensor = torch.cat(results_.decoder_mean, dim=0)  # before .squeeze() shape (input_size, input_dim)
-                dec_std_tensor = torch.cat(results_.decoder_std, dim=0)   # .squeeze()
+                # dec_std_tensor = torch.cat(results_.decoder_std, dim=0)   # .squeeze()
                 dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
-                dec_std_np = dec_std_tensor.cpu().detach().numpy()
-                dec_variance_np = np.square(dec_std_np)
+                # dec_std_np = dec_std_tensor.cpu().detach().numpy()
+                # dec_variance_np = np.square(dec_std_np)
                 plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
                                    Sx=results_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
@@ -233,6 +233,8 @@ if __name__ == '__main__':
     # for fold, (train_index, test_index) in enumerate(kf.split(fhr_healthy_dataset)):
     #     train_subsampler = Subset(fhr_healthy_dataset, train_index)
     #     test_subsampler = Subset(fhr_healthy_dataset, test_index)
+    torch.manual_seed(42)
+    np.random.seed(42)
 
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -263,12 +265,9 @@ if __name__ == '__main__':
     clip = 10
     learning_rate = lr
     batch_size = batch_size  # 128
-    seed = 142
     print_every = 20  # batches
     save_every = 20  # epochs
 
-    # manual seed
-    torch.manual_seed(seed)
     plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
@@ -276,7 +275,7 @@ if __name__ == '__main__':
     #                    n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
 
     model = VRNN_GMM(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
-                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+                     n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
 
     print(f'Model:  \n {model}')
     print('==' * 50)

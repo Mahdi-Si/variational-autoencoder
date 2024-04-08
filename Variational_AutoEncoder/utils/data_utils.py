@@ -152,9 +152,9 @@ def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=900)
+    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
 
@@ -217,7 +217,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
     plt.set_cmap(cmstr)
-    plt.rcParams.update({'font.size': 12, 'axes.titlesize': 8, 'axes.labelsize': 8})
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
     i_row = 0
 
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
@@ -273,9 +273,9 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
 
@@ -304,7 +304,7 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
     # Save the figure as an HTML file
     fig_path = os.path.join(plot_dir, 'loss_plot.html')
     fig.write_html(fig_path)
-    # plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=100)
+    # plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=50)
 
 
 def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None, h_hidden_mean=None,
@@ -403,9 +403,9 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + 'overall' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    plt.savefig(plot_dir + '/' + tag + 'overall' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
     # plot latent dim and histogram of it
@@ -452,7 +452,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
             # ax[i_row, 0].set_xticklabels([])
             ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
 
-        plt.savefig(plot_dir + '/' + tag + '_latent' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.savefig(plot_dir + '/' + tag + '_latent' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -476,32 +476,44 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
             i_row += 1
             ax[i_row, 1].set_axis_off()
             ax2 = ax[i_row, 0].twinx()
-            ax2.plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
-            marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*h_hidden_mean[i, :], basefmt=" ")
-            plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
-            plt.setp(marker_line, 'color', "#FC6736")
+            ax2.plot(t_reduced, Sx[0, :], linewidth=1, color="#0C2D57")
+
+            ax3 = ax[i_row, 0].twinx()
+            ax3.plot(t_original, signal, linewidth=1, color="#3D8361")
+
+            # marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*h_hidden_mean[i, :], basefmt=" ")
+            # plt.setp(stem_lines, 'linewidth', 0)
+            # plt.setp(marker_line, 'color', "#FC6736", 'marker', 'o', 'markersize', 8)
+            ax[i_row, 0].plot(t_reduced, 1*h_hidden_mean[i, :], linewidth=1.5, color="#FC6736", marker='o',
+                              linestyle='-', markersize=8)
+
             ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
             ax[i_row, 0].set_xticklabels([])
             ax[i_row, 0].set_ylabel(f'Latent Dim {i} Coefficient 0')
 
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
-        marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(h_hidden_mean, axis=0), basefmt=" ")
-        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
+
+        marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*np.mean(h_hidden_mean, axis=0), basefmt=" ")
+        plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 0)
+        plt.setp(marker_line, 'color', "#FC6736", 'marker', 'o', 'markersize', 8)
+        ax2 = ax[i_row, 0].twinx()
+        ax2.plot(t_reduced, Sx[0, :], linewidth=1, color="#0C2D57")
+        ax3 = ax[i_row, 0].twinx()
+        ax3.plot(t_original, signal, linewidth=1, color="#3D8361")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'Hidden Dim Averaged')
 
-        for i in range(z_latent_mean.shape[0]):
+        for i in range(h_hidden_mean.shape[0]):
             i_row += 1
             ax[i_row, 1].set_axis_off()
-            ax[i_row, 0].hist(z_latent_mean[i, :], bins=40, alpha=0.6, color='blue')
+            ax[i_row, 0].hist(h_hidden_mean[i, :], bins=40, alpha=0.6, color='blue')
             ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
             # ax[i_row, 0].set_xticklabels([])
             ax[i_row, 0].set_ylabel(f'Hidden Dim Histogram {i}')
 
-        plt.savefig(plot_dir + '/' + tag + '_hidden' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.savefig(plot_dir + '/' + tag + '_hidden' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -531,7 +543,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax3 = ax[i_row, 0].twinx()
         ax3.plot(t_2, signal, linewidth=2)
 
-        plt.savefig(plot_dir + '/' + tag + '_klds' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        plt.savefig(plot_dir + '/' + tag + '_klds' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
 
 
@@ -582,6 +594,8 @@ def plot_general_mse(signal=None, plot_order=None, Sx=None, meta=None,
         ax[i_row, 0].set_ylim(0, max_mse_value)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'mse coefficient {i}')
-    plt.savefig(plot_dir + '/' + tag + '_mses' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+        avg_mse = np.mean(all_mse[i, :])
+        ax[i_row, 0].set_title(f'Average MSE: {avg_mse:.5f}')
+    plt.savefig(plot_dir + '/' + tag + '_mses' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
