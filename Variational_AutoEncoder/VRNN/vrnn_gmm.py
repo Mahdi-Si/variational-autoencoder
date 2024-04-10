@@ -46,7 +46,7 @@ class VRNN_GMM(nn.Module):
         self.z_dim = z_dim
         self.n_layers = n_layers
         self.device = device
-        self.n_mixtures = 3
+        self.n_mixtures = 5
 
         self.scattering_transform = ScatteringTransform(input_size=input_size, input_dim=input_dim, log_stat=log_stat,
                                                         device=device)
@@ -126,6 +126,7 @@ class VRNN_GMM(nn.Module):
         all_h = []
         all_z_t = []
         all_kld = []
+        all_dec_reconstructed = []
         kld_loss = 0
         nll_loss = 0
 
@@ -165,7 +166,7 @@ class VRNN_GMM(nn.Module):
             dec_mean_t = self.dec_mean(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
             dec_logvar_t = self.dec_logvar(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
             dec_pi_t = self.dec_pi(dec_t).view(self.input_dim, y.size(1), self.n_mixtures)
-
+            reconstructed_t = torch.sum(dec_mean_t * dec_pi_t, dim=2)
             # recurrence: u_t+1, z_t -> h_t+1
             _, h = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), h)
 
@@ -184,13 +185,14 @@ class VRNN_GMM(nn.Module):
             all_dec_mean.append(dec_t)
             all_dec_std.append(dec_t)
             all_z_t.append(z_t)
+            all_dec_reconstructed.append(reconstructed_t.permute(1, 0))
         results = VrnnForward(
             rec_loss=loss,  # (1, )
             kld_loss=kld_loss,  # ()
             nll_loss=nll_loss,
             encoder_mean=all_enc_mean,  # list(input_size) -> each element: (batch_size, latent_dim)
             encoder_std=all_enc_std,  # list(input_size) -> each element: (batch_size, latent_dim)
-            decoder_mean=all_dec_mean,  # list(150) -> each element: (input_dim, batch_size, n_mixtures)
+            decoder_mean=all_dec_reconstructed,  # list(150) -> each element: (input_dim, batch_size, n_mixtures)
             decoder_std=all_dec_std,  # list(150) -> each element: (input_dim, batch_size, n_mixtures)
             kld_values=all_kld,  # list(input_size) -> each element: (batch_size, latent_dim)
             Sx=scattering_original,  # (input_size, batch_size, input_dim)
@@ -275,6 +277,7 @@ class VRNN_GMM(nn.Module):
         # mu (input_dim, batch_size, n_gmm)
         # pi (input_dim, batch_size, n_gmm)
         # for all data channels
+        list_rec = []
         for n in range(x.shape[1]):
             # likelihood of a single mixture at evaluation point
             # pred_dist = tdist.Normal(mu[:, n, :], logvar[:, n, :].exp().sqrt())
@@ -283,6 +286,7 @@ class VRNN_GMM(nn.Module):
             like = pred_dist.log_prob(x_mod)
             # weighting by probability of mixture and summing
             temp = (pi[n, :, :] * like)
+            list_rec.append(temp)
             temp = temp.sum()
             # log-likelihood added to previous log-likelihoods
             loglike = loglike + temp

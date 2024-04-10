@@ -52,7 +52,8 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
     plt.close('all')
     train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch_train}")
     model.train()
-    for batch_idx, data in train_loader_tqdm:
+    for batch_idx, train_data in train_loader_tqdm:
+        data = train_data[0]
         data = data.to(device)
         optimizer.zero_grad()
         results = model(data)
@@ -105,8 +106,8 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
     mean_test_loss, mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0, 0
     model.eval()
     with torch.no_grad():
-        for i, data in enumerate(test_loader):
-
+        for i, test_data in enumerate(test_loader):
+            data = test_data[0]
             data = data.to(device)
 
             results_test = model(data)
