@@ -108,7 +108,7 @@ class VRNN(nn.Module):
         #prior
         self.prior = nn.Sequential(
             nn.Linear(h_dim, h_dim),
-            nn.ReLU())
+            nn.ReLU(),)
         self.prior_mean = nn.Linear(h_dim, z_dim)
         self.prior_std = nn.Sequential(
             nn.Linear(h_dim, z_dim),

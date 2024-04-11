@@ -167,6 +167,8 @@ def aux_hie_test(model=None, dataloader=None, results_dir=None):
 
 
 if __name__ == '__main__':
+    torch.manual_seed(42)
+    np.random.seed(42)
     config_file_path = r'config_arguments.yaml'
     with open(config_file_path, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
@@ -215,8 +217,8 @@ if __name__ == '__main__':
     # normalize_data(healthy_list, min_fhr, max_fhr)
     # normalize_data(hie_list, min_fhr, max_fhr)
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
-    fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
-    data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
+    # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
+    # data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
 
     with open(stat_path, 'rb') as f:
         x_mean = np.load(f)
@@ -234,13 +236,12 @@ if __name__ == '__main__':
     # for fold, (train_index, test_index) in enumerate(kf.split(fhr_healthy_dataset)):
     #     train_subsampler = Subset(fhr_healthy_dataset, train_index)
     #     test_subsampler = Subset(fhr_healthy_dataset, test_index)
-    torch.manual_seed(42)
-    np.random.seed(42)
+
 
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=32)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=32)
+    # aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False, num_workers=32)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
     print('==' * 50)
     # fhr_hie_dataset = FHRDataset(hie_list[0:10])
@@ -272,11 +273,11 @@ if __name__ == '__main__':
     plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
-    # model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
-    #                    n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+    model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
 
-    model = VRNN_GMM(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
-                     n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+    # model = VRNN_GMM(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+    #                  n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
 
     print(f'Model:  \n {model}')
     print('==' * 50)
@@ -288,7 +289,7 @@ if __name__ == '__main__':
     # writer = SummaryWriter(log_dir=tensorboard_dir)
     # writer.add_graph(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[500, 1000, 2000])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 3500])
 
     if previous_check_point is not None:
         print(f"Loading checkpoint '{previous_check_point}'")
