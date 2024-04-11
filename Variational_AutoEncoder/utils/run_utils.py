@@ -2,6 +2,8 @@ import psutil
 import GPUtil
 import time
 import logging
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 def log_resource_usage():
@@ -69,3 +71,96 @@ def setup_logging(log_file_setup=None):
 def update_learning_rate(optimizer, lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+
+
+def visualize_layer_parameters(model, layer_name, param_type='weight', cmap='viridis'):
+    """
+    Visualize the weights or biases of a specific layer in a PyTorch model.
+
+    Parameters:
+    - model: nn.Module, the model containing the layer.
+    - layer_name: str, the name of the layer whose parameters are to be visualized.
+    - param_type: str, either 'weight' or 'bias' to specify the type of parameter to visualize.
+    - cmap: str, the colormap to be used for heatmap visualization.
+    """
+    # Ensure the parameter type is either 'weight' or 'bias'
+    assert param_type in ['weight', 'bias'], "param_type must be either 'weight' or 'bias'"
+
+    # Find the layer by name and extract the specified parameter
+    for name, module in model.named_modules():
+        if name == layer_name:
+            param = getattr(module, param_type).data.cpu().numpy()
+            break
+    else:
+        raise ValueError(f"Layer named '{layer_name}' not found in the model.")
+
+    # Visualization
+    if param.ndim == 2:  # A 2D parameter (e.g., weights of a linear layer)
+        # Use a heatmap for 2D data
+        plt.figure(figsize=(10, 5))
+        plt.imshow(param, cmap=cmap, aspect='auto')
+        plt.colorbar()
+        plt.title(f'{param_type.capitalize()} of layer {layer_name}')
+        plt.xlabel('Features')
+        plt.ylabel('Units')
+    else:  # For biases or other 1D parameters
+        # Use a histogram for 1D data
+        plt.figure(figsize=(10, 5))
+        plt.hist(param, bins=50)
+        plt.title(f'{param_type.capitalize()} distribution of layer {layer_name}')
+    plt.show()
+
+
+def visualize_layer_parameters_debug(layer, param_type='weight', cmap='viridis'):
+    """
+    Visualize the weights or biases of a specific layer.
+
+    Parameters:
+    - layer: The PyTorch layer to visualize.
+    - param_type: str, either 'weight' or 'bias' to specify the type of parameter to visualize.
+    - cmap: str, the colormap to be used for heatmap visualization.
+    """
+    assert param_type in ['weight', 'bias'], "param_type must be either 'weight' or 'bias'"
+
+    param = getattr(layer, param_type).data.cpu().numpy()
+
+    if param.ndim == 2:  # A 2D parameter (e.g., weights of a linear layer)
+        plt.figure(figsize=(10, 5))
+        plt.imshow(param, cmap=cmap, aspect='auto')
+        plt.colorbar()
+        plt.title(f'{param_type.capitalize()} visualization')
+        plt.xlabel('Features')
+        plt.ylabel('Units')
+    else:  # For biases or other 1D parameters
+        plt.figure(figsize=(10, 5))
+        plt.hist(param, bins=50)
+        plt.title(f'{param_type.capitalize()} distribution')
+    plt.show()
+
+
+def visualize_signal(signal, title='Signal Visualization', xlabel='Dimension', ylabel='Value'):
+    """
+    Visualize a signal (e.g., enc_t values) as a line plot.
+
+    Parameters:
+    - signal: torch.Tensor, the signal to visualize. Should be a 1D or 2D tensor.
+    - title: str, title of the plot.
+    - xlabel: str, label for the x-axis.
+    - ylabel: str, label for the y-axis.
+    """
+    signal = signal.detach().cpu().numpy()  # Ensure it's a CPU NumPy array and no grad
+
+    plt.figure(figsize=(10, 5))
+    if signal.ndim == 1:
+        plt.plot(signal)
+    elif signal.ndim == 2:  # For 2D signals, plot each row as a separate line
+        for row in signal:
+            plt.plot(row)
+    else:
+        raise ValueError("Signal dimensionality not supported for visualization.")
+
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    # plt.grid(True)
+    plt.show()

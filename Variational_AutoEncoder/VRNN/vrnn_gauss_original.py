@@ -13,6 +13,7 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 from Variational_AutoEncoder.models.misc import ScatteringNet
 from Variational_AutoEncoder.utils.data_utils import plot_scattering
+from Variational_AutoEncoder.utils.run_utils import visualize_layer_parameters_debug, visualize_layer_parameters
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
@@ -81,7 +82,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.z_dim))
         self.enc_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
         # prior function (phi_prior) -> Prior
@@ -93,7 +94,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.z_dim))
         self.prior_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
         # decoder function (phi_dec) -> Generation
@@ -108,7 +109,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.input_dim))
         self.dec_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.input_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
         # recurrence function (f_theta) -> Recurrence
@@ -299,3 +300,29 @@ class VRNN_Gauss(nn.Module):
             for index, dim in enumerate(modify_dims):
                 h[:, dim] = scale[index] * h[:, dim] + shift[index]
         return h
+
+    def visualize_layer_parameters_debug(self, layer, param_type='weight', cmap='viridis'):
+        """
+        Visualize the weights or biases of a specific layer.
+
+        Parameters:
+        - layer: The PyTorch layer to visualize.
+        - param_type: str, either 'weight' or 'bias' to specify the type of parameter to visualize.
+        - cmap: str, the colormap to be used for heatmap visualization.
+        """
+        assert param_type in ['weight', 'bias'], "param_type must be either 'weight' or 'bias'"
+
+        param = getattr(layer, param_type).data.cpu().numpy()
+
+        if param.ndim == 2:  # A 2D parameter (e.g., weights of a linear layer)
+            plt.figure(figsize=(10, 5))
+            plt.imshow(param, cmap=cmap, aspect='auto')
+            plt.colorbar()
+            plt.title(f'{param_type.capitalize()} visualization')
+            plt.xlabel('Features')
+            plt.ylabel('Units')
+        else:  # For biases or other 1D parameters
+            plt.figure(figsize=(10, 5))
+            plt.hist(param, bins=50)
+            plt.title(f'{param_type.capitalize()} distribution')
+        plt.show()

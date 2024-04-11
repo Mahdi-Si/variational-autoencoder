@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.distributions as tdist
@@ -12,6 +13,7 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 from Variational_AutoEncoder.models.misc import ScatteringNet
 from Variational_AutoEncoder.utils.data_utils import plot_scattering
+from Variational_AutoEncoder.utils.run_utils import visualize_layer_parameters_debug, visualize_layer_parameters
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
@@ -66,9 +68,9 @@ class VRNN_Gauss(nn.Module):
         #     nn.ReLU(),
         #     nn.Linear(self.h_dim, self.h_dim),)
         self.phi_z = nn.Sequential(
-            nn.Linear(self.z_dim, self.h_dim),
+            nn.Linear(self.z_dim, self.h_dim + self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),)
+            nn.Linear(self.h_dim + self.h_dim, self.h_dim + self.h_dim),)
 
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
@@ -80,7 +82,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.z_dim))
         self.enc_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
         # prior function (phi_prior) -> Prior
@@ -92,7 +94,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.z_dim))
         self.prior_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
         # decoder function (phi_dec) -> Generation
@@ -102,18 +104,16 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),)
         self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, self.input_dim),   # or to self.h_dim then uncomment next line
-            # nn.ReLU(),
-            # nn.Linear(self.h_dim, self.input_dim)
-        )
+            nn.Linear(self.h_dim, self.h_dim),
+            nn.ReLU(),
+            nn.Linear(self.h_dim, self.input_dim))
         self.dec_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.input_dim),
-            # nn.ReLU(),
-            # nn.Linear(self.h_dim, self.input_dim)
+            nn.ReLU(),
         )
 
         # recurrence function (f_theta) -> Recurrence
-        self.rnn = nn.GRU(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True)
+        self.rnn = nn.GRU(self.h_dim + self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True)
 
     def forward(self, y):
 
@@ -173,7 +173,8 @@ class VRNN_Gauss(nn.Module):
             phi_z_t = self.phi_z(z_t)
 
             # decoder: h_t, z_t -> y_t
-            dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
+            # dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
+            dec_t = self.dec(phi_z_t)
             dec_mean_t = self.dec_mean(dec_t)
             dec_logvar_t = self.dec_logvar(dec_t)
             pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())

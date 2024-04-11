@@ -18,7 +18,8 @@ from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import torch.nn.functional as F
 import numpy as np
 import builtins
-from vrnn_gauss import VRNN_Gauss
+# from vrnn_gauss import VRNN_Gauss
+from vrnn_gauss_edited import VRNN_Gauss
 from vrnn_gmm import VRNN_GMM
 # from torch.utils.tensorboard import SummaryWriter
 
@@ -291,16 +292,16 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 3500])
 
-    if previous_check_point is not None:
-        print(f"Loading checkpoint '{previous_check_point}'")
-        checkpoint = torch.load(previous_check_point)
-        start_epoch = checkpoint['epoch'] + 1
-        model.load_state_dict(checkpoint['state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        print(f"Loaded checkpoint '{previous_check_point}' (epoch {checkpoint['epoch']})")
-    else:
-        start_epoch = 1
-
+    # if previous_check_point is not None:
+    #     print(f"Loading checkpoint '{previous_check_point}'")
+    #     checkpoint = torch.load(previous_check_point)
+    #     start_epoch = checkpoint['epoch'] + 1
+    #     model.load_state_dict(checkpoint['state_dict'])
+    #     optimizer.load_state_dict(checkpoint['optimizer'])
+    #     print(f"Loaded checkpoint '{previous_check_point}' (epoch {checkpoint['epoch']})")
+    # else:
+    #     start_epoch = 1
+    start_epoch = 1
     train_loss_list = []
     train_rec_loss_list = []
     train_kld_loss_list = []
