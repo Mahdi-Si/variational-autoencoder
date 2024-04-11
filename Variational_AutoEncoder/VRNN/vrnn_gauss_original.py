@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.distributions as tdist
@@ -80,7 +81,7 @@ class VRNN_Gauss(nn.Module):
             nn.Linear(self.h_dim, self.z_dim))
         self.enc_logvar = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim),
-            nn.ELU(),
+            # nn.ReLU(),
         )
 
         # prior function (phi_prior) -> Prior
@@ -91,8 +92,8 @@ class VRNN_Gauss(nn.Module):
         self.prior_mean = nn.Sequential(
             nn.Linear(self.h_dim, self.z_dim))
         self.prior_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, self.h_dim),
-            nn.ELU(),
+            nn.Linear(self.h_dim, self.z_dim),
+            # nn.ReLU(),
         )
 
         # decoder function (phi_dec) -> Generation
@@ -106,9 +107,8 @@ class VRNN_Gauss(nn.Module):
             nn.ReLU(),
             nn.Linear(self.h_dim, self.input_dim))
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, self.h_dim),
-            nn.ELU(),
-            # nn.Linear(self.h_dim, self.input_dim)
+            nn.Linear(self.h_dim, self.input_dim),
+            # nn.ReLU(),
         )
 
         # recurrence function (f_theta) -> Recurrence
