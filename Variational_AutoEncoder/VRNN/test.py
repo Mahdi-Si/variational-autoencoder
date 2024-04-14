@@ -18,11 +18,10 @@ from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import torch.nn.functional as F
 import numpy as np
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
-    calculate_stats, plot_scattering_v2, plot_loss_dict, plot_averaged_results, plot_general_mse
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse
+
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_original import VRNN_Gauss
+from vrnn_gauss import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
 
@@ -43,9 +42,12 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
     model_t.to(device)
     model_t.eval()
     mse_all_data = torch.empty((0, input_dim_t)).to(device)
+    collected_data = []
     with torch.no_grad():
         for j, complete_batched_data_t in tqdm(enumerate(data_loader), total=len(data_loader)):
-            batched_data_t  = complete_batched_data_t[0]
+            batched_data_t = complete_batched_data_t[0]
+            guids = complete_batched_data_t[1]
+            epochs_nums = complete_batched_data_t[2]
             batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
             results_t = model_t(batched_data_t)
             z_latent_t_ = torch.stack(results_t.z_latent, dim=2)  # (batch_size, latent_dim, 150)
@@ -65,7 +67,22 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
 
             mse_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2)/Sx_t_.size(-1)
             mse_all_data = torch.cat((mse_all_data, mse_coefficients), dim=0)
-            selected_idx = np.random.randint(0, batched_data_t.shape[0], 10)
+            max_values = torch.max(h_hidden_t__, dim=2)
+            min_values = torch.min(h_hidden_t__, dim=2)
+            average_values = torch.mean(h_hidden_t__, dim=2)
+            std_values = torch.std(h_hidden_t__, dim=2)
+            diff_values = torch.diff(h_hidden_t__, dim=2)
+
+            batch_results = zip(guids, epochs_nums, mse_coefficients.cpu().numpy(),
+                                max_values.values.cpu().numpy(),
+                                min_values.values.cpu().numpy(),
+                                average_values.detach().cpu().numpy(),
+                                std_values.detach().cpu().numpy(),
+                                diff_values.detach().cpu().numpy())
+            collected_data.extend([(guid, epoch, mse_val, max_val, min_val, average_val, std_val, diff_val)
+                                   for guid, epoch, mse_val, max_val, min_val, average_val, std_val, diff_val
+                                   in batch_results])
+            # selected_idx = np.random.randint(0, batched_data_t.shape[0], 10)
             selected_idx = [0, 1]
             for idx in selected_idx:
                 selected_signal = batched_data_t[idx]
@@ -97,18 +114,17 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
                                    z_latent=z_latent_mean.detach().cpu().numpy(),
                                    plot_dir=save_dir, tag=f'B_{j}_{idx}_')
         # mse_all_data (dataset_size, input_dim)
-        # plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
-        #                  tag='mses',
-        #                  plot_dir=save_dir)
+        plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
+                         tag=f'mses_{tag}',
+                         plot_dir=base_dir)
         mse_average = mse_all_data.mean(dim=0)
         print('==' * 50)
         print(f'MSE each dim: {mse_average}')
         print(f'MSE average: {mse_average.sum()}')
         print('==' * 50)
+        df = pd.DataFrame(collected_data, columns=['GUID', 'Epoch', 'MSE', 'Max', 'Min', 'Average', 'Std', 'Diff'])
+        df.to_csv(f'{base_dir}/{tag}.csv')
         return mse_average
-
-
-
 
 
 if __name__ == '__main__':
@@ -149,13 +165,13 @@ if __name__ == '__main__':
     print(yaml.dump(config, sort_keys=False, default_flow_style=False))
     print('==' * 50)
     # Preparing training and testing datasets --------------------------------------------------------------------------
-    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
-    dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
+    dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
-    # batch_size = config['general_config']['batch_size']['train']
-    batch_size = 2
-    # dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
+    batch_size = config['general_config']['batch_size']['train']
+    # batch_size = 2
+    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     data_loader_healthy = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
@@ -193,46 +209,52 @@ if __name__ == '__main__':
     plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
-    model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+    model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                        n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h66_l22\VRNN-1764.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h11_l3\VRNN-4000.pth")
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
                            modify_z=None, base_dir=inference_results_dir, tag='test_1')
-    # columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
-    # columns.insert(0, 'Changed')
-    # df = pd.DataFrame(columns=columns)
-    # final_list = ["No Change"] + mse_average.cpu().tolist()
-    # df.loc[len(df)] = final_list
-    # for i in range(latent_dim):
-    #     modify_dims_z = list(range(0, latent_dim))
-    #     # scale = [int(x) for x in np.zeros(latent_dim)]
-    #     scale = np.zeros(latent_dim).astype(int).tolist()
-    #     scale[i] = int(1)
-    #     shift = [int(x) for x in np.zeros(latent_dim)]
-    #     modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
-    #     print(f'modified z {i}: \n {modify_z_dict}')
-    #     print('=='*50)
-    #
-    #     mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-    #                       modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
+    columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
+    columns.insert(0, 'Changed')
+    df = pd.DataFrame(columns=columns)
+    df_2 = pd.DataFrame(columns=columns)
+    final_list = ["No Change"] + mse_average.cpu().tolist()
+    df.loc[len(df)] = final_list
+    df_2.loc[len(df_2)] = final_list
+    for i in range(latent_dim):
+        modify_dims_z = list(range(0, latent_dim))
+        # scale = [int(x) for x in np.zeros(latent_dim)]
+        scale = np.zeros(latent_dim).astype(int).tolist()
+        scale[i] = int(10)
+        shift = [int(x) for x in np.zeros(latent_dim)]
+        modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
+        print(f'modified z {i}: \n {modify_z_dict}')
+        print('=='*50)
 
-    # for i in range(0, rnn_hidden_dim):
-    #     modify_dims_h = [int(i)]
-    #     scale = [int(0)]
-    #     shift = [int(0)]
-    #     modify_h_dict = {'modify_dims': modify_dims_h, 'scale': scale, 'shift': shift}
-    #     print(f'modified z {i}: \n {modify_h_dict}')
-    #     print('=='*50)
-    #
-    #     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_z=None,
-    #                            modify_h=modify_h_dict,
-    #                            base_dir=inference_results_dir, tag=f'hidden_{i}')
-    #     final_list = [f'Hidden_dim_{i}'] + mse_average.cpu().tolist()
-    #     df.loc[len(df)] = final_list
-    #
-    # df.to_csv((inference_results_dir + '/' + 'mse_losses.csv'), index=False)
+        mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
+                          modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
+
+        final_list = [f'Latent_dim_{i}'] + mse_average.cpu().tolist()
+        df.loc[len(df)] = final_list
+
+    df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
+
+    for i in range(0, rnn_hidden_dim):
+        modify_dims_h = [int(i)]
+        scale = [int(0)]
+        shift = [int(0)]
+        modify_h_dict = {'modify_dims': modify_dims_h, 'scale': scale, 'shift': shift}
+        print(f'modified z {i}: \n {modify_h_dict}')
+        print('=='*50)
+
+        mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_z=None,
+                               modify_h=modify_h_dict,
+                               base_dir=inference_results_dir, tag=f'hidden_{i}')
+        final_list = [f'Hidden_dim_{i}'] + mse_average.cpu().tolist()
+        df_2.loc[len(df_2)] = final_list
+    df_2.to_csv((inference_results_dir + '/' + 'mse_losses_hidden_dims.csv'), index=False)

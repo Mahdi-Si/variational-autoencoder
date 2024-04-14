@@ -1,11 +1,8 @@
-import math
+
 import torch.nn as nn
 import torch.utils
 import torch.utils.data
-from torchvision import datasets, transforms
-from torch.autograd import Variable
-import matplotlib.pyplot as plt 
-from model import VRNN
+import matplotlib.pyplot as plt
 import os
 import yaml
 import logging
@@ -14,18 +11,13 @@ import sys
 import pickle
 from tqdm import tqdm
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
-import torch.nn.functional as F
+from torch.utils.data import DataLoader, random_split
 import numpy as np
-import builtins
-# from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_edited import VRNN_Gauss
-from vrnn_gmm import VRNN_GMM
-# from torch.utils.tensorboard import SummaryWriter
 
+# from torch.utils.tensorboard import SummaryWriter
+from vrnn_gauss_I import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering, plot_original_reconstructed, \
-    calculate_stats, plot_scattering_v2, plot_loss_dict
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -240,8 +232,8 @@ if __name__ == '__main__':
 
 
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=32)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=32)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=20)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=20)
     # aux_hie_loader = DataLoader(fhr_aux_hie_dataset, batch_size=256, shuffle=False, num_workers=32)
     print(f'Train size: {len(train_dataset)} \n Test size: {len(test_dataset)}')
     print('==' * 50)
@@ -274,8 +266,8 @@ if __name__ == '__main__':
     plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
-    model = VRNN_Gauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
-                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
+    model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
+                      n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
 
     # model = VRNN_GMM(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
     #                  n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
@@ -314,11 +306,11 @@ if __name__ == '__main__':
     for epoch in tqdm(range(start_epoch, n_epochs + 1), desc='Epoch:'):
         log_resource_usage()
         train_loss, train_rec_loss, train_kld_loss = train(model=model, epoch_train=epoch,
-                                                                           plot_dir=train_results_dir,
-                                                                           plot_every_epoch=plot_every_epoch,
-                                                                           train_loader=train_loader,
-                                                                           kld_beta=kld_beta,
-                                                                           optimizer=optimizer)
+                                                           plot_dir=train_results_dir,
+                                                           plot_every_epoch=plot_every_epoch,
+                                                           train_loader=train_loader,
+                                                           kld_beta=kld_beta,
+                                                           optimizer=optimizer)
 
         train_loss_list.append(train_loss)
         train_rec_loss_list.append(train_rec_loss)
@@ -329,9 +321,9 @@ if __name__ == '__main__':
             if train_loss <= min(train_loss_list):
                 checkpoint_name = f'VRNN-{epoch}.pth'
                 model_dir = os.path.join(model_checkpoint_dir, checkpoint_name)
-                for file_name in os.listdir(model_checkpoint_dir):
-                    if file_name.endswith('.pth'):
-                        os.remove(os.path.join(model_checkpoint_dir, file_name))
+                # for file_name in os.listdir(model_checkpoint_dir):
+                #     if file_name.endswith('.pth'):
+                #         os.remove(os.path.join(model_checkpoint_dir, file_name))
 
                 state = {
                     'epoch': epoch,

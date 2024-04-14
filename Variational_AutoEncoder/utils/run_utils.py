@@ -111,7 +111,7 @@ def visualize_layer_parameters(model, layer_name, param_type='weight', cmap='vir
     plt.show()
 
 
-def visualize_layer_parameters_debug(layer, param_type='weight', cmap='viridis'):
+def visualize_layer(layer, param_type='weight', cmap='viridis'):
     """
     Visualize the weights or biases of a specific layer.
 
