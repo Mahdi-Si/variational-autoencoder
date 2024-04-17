@@ -431,7 +431,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
             ax2.plot(t_original, signal, linewidth=1.5, color="#0C2D57")
             marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
             plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
-            plt.setp(marker_line, 'color', "#FC6736")
+            plt.setp(marker_line, 'color', "#387ADF")
             ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
             ax[i_row, 0].set_xticklabels([])
             ax[i_row, 0].set_ylabel(f'Latent Dim {i} Coefficient')

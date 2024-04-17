@@ -37,7 +37,7 @@ class VRNNGauss(VrnnGaussAbs):
         self.phi_z = nn.Sequential(
             nn.Linear(self.z_dim, self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),
+            nn.Linear(self.h_dim, self.h_dim ),
         )
 
         # encoder function (phi_enc) -> Inference
@@ -57,7 +57,7 @@ class VRNNGauss(VrnnGaussAbs):
 
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
-            nn.Linear(self.h_dim + self.h_dim, self.h_dim),
+            nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),
             nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),)
@@ -117,10 +117,11 @@ class VRNNGauss(VrnnGaussAbs):
                 z_t = self._modify_z(z=z_t, modify_dims=modify_dims, scale=scale, shift=shift)
 
             # feature extraction: z_t
-            phi_z_t = self.phi_z(z_t)  # (batch_size, hidden_dim)
+            phi_z_t = self.phi_z(z_t)
 
             # decoder: h_t, z_t -> y_t
-            dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))  #(batch_size, hidden_dim*2)-(batch_size, hidden_dim)
+            # dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
+            dec_t = self.dec(phi_z_t)
             dec_mean_t = self.dec_mean(dec_t)
             dec_logvar_t = self.dec_logvar(dec_t)
             pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())

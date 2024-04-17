@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader, random_split
 import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
-from vrnn_gauss_I import VRNNGauss
+# from vrnn_gauss_I import VRNNGauss
+from vrnn_gauss_I_modified_decoder import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -250,6 +251,7 @@ if __name__ == '__main__':
     epochs_num = config['general_config']['epochs']
     lr = config['general_config']['lr']
     kld_beta = config['model_config']['VAE_model']['kld_beta']
+    kld_beta = float(kld_beta)
 
     # hyperparameters
     x_dim = input_dim
