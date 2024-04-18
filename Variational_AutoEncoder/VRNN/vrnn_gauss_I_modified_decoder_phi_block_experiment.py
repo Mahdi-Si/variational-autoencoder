@@ -27,37 +27,44 @@ class VRNNGauss(VrnnGaussAbs):
 
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
-            nn.Linear(self.input_dim, self.h_dim),
+            nn.Linear(self.input_dim, int(self.h_dim / 2)),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),)
+            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 2)),
+        )
         # self.phi_u = nn.Sequential(
         #     nn.Linear(self.u_dim, self.h_dim),
         #     nn.ReLU(),
         #     nn.Linear(self.h_dim, self.h_dim),)
         self.phi_z = nn.Sequential(
-            nn.Linear(self.z_dim, self.h_dim),
+            nn.Linear(self.z_dim, int(self.h_dim / 2)),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),
+            nn.Linear(int(self.h_dim / 2), self.h_dim),
+        )
+
+        self.phi_h = nn.Sequential(
+            nn.Linear(self.h_dim, int(self.h_dim / 3)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 2)),
         )
 
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
-            nn.Linear(self.h_dim + self.h_dim, self.h_dim),
+            nn.Linear(2 * int(self.h_dim / 2), self.h_dim),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.h_dim),
+            nn.Linear(self.h_dim, int(self.h_dim / 2)),
             nn.ReLU(),
         )
         self.enc_mean = nn.Sequential(
-            nn.Linear(self.h_dim, self.z_dim)
+            nn.Linear(int(self.h_dim / 2), self.z_dim)
         )
         self.enc_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, self.z_dim),
+            nn.Linear(int(self.h_dim / 2), self.z_dim),
             nn.ReLU(),
         )
 
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
-            nn.Linear(self.h_dim + self.h_dim, self.h_dim),
+            nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),
             nn.Linear(self.h_dim, self.h_dim),
             nn.ReLU(),)
@@ -72,7 +79,7 @@ class VRNNGauss(VrnnGaussAbs):
 
         # recurrence function (f_theta) -> Recurrence
         # self.rnn = nn.GRU(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
-        self.rnn = nn.LSTM(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
+        self.rnn = nn.LSTM(self.h_dim + int(self.h_dim / 2), self.h_dim, self.n_layers, bias)  # , batch_first=True
 
     def forward(self, y):
         y, meta = self.scattering_transform(y)
@@ -81,8 +88,10 @@ class VRNNGauss(VrnnGaussAbs):
         # initialization
         # h = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
 
-        h = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
-        c = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
+        # h = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
+        # c = torch.zeros(self.n_layers, y.size(1), self.h_dim, device=self.device)
+        h = torch.randn(self.n_layers, y.size(1), self.h_dim, device=self.device)
+        c = torch.randn(self.n_layers, y.size(1), self.h_dim, device=self.device)
 
         all_enc_mean, all_enc_std = [], []
         all_dec_mean, all_dec_std = [], []
@@ -91,8 +100,11 @@ class VRNNGauss(VrnnGaussAbs):
         all_kld = []
         kld_loss = 0
 
-        prior_mean_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
-        prior_logvar_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
+        # prior_mean_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
+        # prior_logvar_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
+
+        prior_mean_t = torch.randn([y.size(1), self.z_dim], device=self.device) * 0.01
+        prior_logvar_t = torch.full([y.size(1), self.z_dim], -1.0, device=self.device)  # log(var) = -1 => var = exp(-1)
 
         # for all time steps
         for t in range(y.size(0)):
@@ -101,9 +113,9 @@ class VRNNGauss(VrnnGaussAbs):
             phi_y_t = self.phi_y(y[t])  # should be (input_size, batch_size, input_dim)
             # feature extraction: u_t
             # phi_u_t = self.phi_u(u[:, :, t])
-
+            phi_h_t = self.phi_h(h[-1])
             # encoder: y_t, h_t -> z_t
-            enc_t = self.enc(torch.cat([phi_y_t, h[-1]], 1))
+            enc_t = self.enc(torch.cat([phi_y_t, phi_h_t], 1))
             enc_mean_t = self.enc_mean(enc_t)
             enc_logvar_t = self.enc_logvar(enc_t)
 
@@ -117,17 +129,18 @@ class VRNNGauss(VrnnGaussAbs):
                 z_t = self._modify_z(z=z_t, modify_dims=modify_dims, scale=scale, shift=shift)
 
             # feature extraction: z_t
-            phi_z_t = self.phi_z(z_t)  # (batch_size, hidden_dim)
+            phi_z_t = self.phi_z(z_t)
 
             # decoder: h_t, z_t -> y_t
-            dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))  #(batch_size, hidden_dim*2)-(batch_size, hidden_dim)
+            # dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
+            dec_t = self.dec(phi_z_t)
             dec_mean_t = self.dec_mean(dec_t)
             dec_logvar_t = self.dec_logvar(dec_t)
             pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
 
             # recurrence: y_t, z_t -> h_t+1
             # _, h = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), h)  # phi_h_t
-            output_state_ex, (h, c) = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), (h, c))
+            _, (h, c) = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), (h, c))
 
             if self.modify_h is not None:
                 modify_dims = self.modify_h.get('modify_dims')

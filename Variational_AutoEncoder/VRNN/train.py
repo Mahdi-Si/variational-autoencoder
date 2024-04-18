@@ -16,7 +16,7 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_I_modified_decoder import VRNNGauss
+from vrnn_gauss_I_modified_decoder_phi_block_experiment import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -55,7 +55,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
         loss = (kld_beta * results.kld_loss) + results.nll_loss
         loss.backward()
         optimizer.step()
-        kld_loss_epoch += results.kld_loss.item()
+        kld_loss_epoch += kld_beta * results.kld_loss.item()
         # nll_loss_epoch += results.nll_loss.item()
         train_loss_epoch += loss.item()
         reconstruction_loss_epoch += results.rec_loss.item()
@@ -65,7 +65,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
         z_latent = torch.stack(results.z_latent, dim=2)
         message = (f'Train Epoch: {epoch_train} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
                    f'({100. * batch_idx / len(train_loader):.0f}%)] | '
-                   f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {0.00025 * results.kld_loss:.5f} | '
+                   f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {kld_beta * results.kld_loss:.5f} | '
                    f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
         print(message)
         # tqdm.write(message)
