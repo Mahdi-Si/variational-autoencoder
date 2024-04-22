@@ -51,6 +51,31 @@ class VrnnGaussAbs(nn.Module, ABC):
         pass
 
     @staticmethod
+    def kld_gaussian(mean_1, logvar_1, mean_2, logvar_2):
+        """
+        Calculate the Kullback-Leibler divergence between two Gaussians with parameters
+        mean_1, logvar_1 and mean_2, logvar_2.
+
+        Parameters:
+        mean_1 (torch.Tensor): Mean vector of the first Gaussian (batch_size, input_dim)
+        logvar_1 (torch.Tensor): Log variance vector of the first Gaussian (batch_size, input_dim)
+        mean_2 (torch.Tensor): Mean vector of the second Gaussian (batch_size, input_dim)
+        logvar_2 (torch.Tensor): Log variance vector of the second Gaussian (batch_size, input_dim)
+
+        Returns:
+        torch.Tensor: Kullback-Leibler divergence for each batch element (batch_size,)
+        """
+        # Compute the term-by-term differences and sums needed for the KLD formula
+        term1 = torch.exp(logvar_2) / torch.exp(logvar_1)
+        term2 = (mean_2 - mean_1) ** 2 / torch.exp(logvar_1)
+        term3 = logvar_1 - logvar_2
+        kld_element = term1 + term2 - 1 + term3
+        # Sum over the input dimensions and calculate the KLD for each batch element
+        kld = 0.5 * (torch.sum(term1 + term2 - 1 + term3))
+
+        return kld, kld_element
+
+    @staticmethod
     def kld_gauss_(mu_q, logvar_q, mu_p, logvar_p):
         # Goal: Minimize KL divergence between q_pi(z|xi) || p(z|xi)
         # This is equivalent to maximizing the ELBO: - D_KL(q_phi(z|xi) || p(z)) + Reconstruction term

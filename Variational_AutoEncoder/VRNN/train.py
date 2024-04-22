@@ -16,7 +16,7 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_I_modified_decoder_phi_block_experiment import VRNNGauss
+from vrnn_gauss_I_experiment_ import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -34,8 +34,8 @@ inference, prior, and generating models."""
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train_loader=None,
-          optimizer=None, plot_every_epoch=None, Beta=None):
+def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', train_loader=None,
+          optimizer=None, plot_every_epoch=None):
     for param_group in optimizer.param_groups:
         current_learning_rate = param_group['lr']
         print(f'Learning Rate; {current_learning_rate}')
@@ -96,7 +96,7 @@ def train(epoch_train=None, model=None, kld_beta=1, plot_dir=None, tag='', train
     return train_loss_tl_avg, reconstruction_loss_avg, kld_loss_avg
     
 
-def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None):
+def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_every_epoch=None, kld_beta=1.1):
     mean_test_loss, mean_kld_loss, mean_nll_loss, mean_rec_loss = 0, 0, 0, 0
     model.eval()
     with torch.no_grad():
@@ -105,8 +105,8 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
             data = data.to(device)
 
             results_test = model(data)
-            mean_test_loss += (results_test.kld_loss.item() + results_test.rec_loss.item())
-            mean_kld_loss += results_test.kld_loss.item()
+            mean_test_loss += (kld_beta * results_test.kld_loss.item() + results_test.rec_loss.item())
+            mean_kld_loss += kld_beta * results_test.kld_loss.item()
             # mean_nll_loss += results_test.nll_loss.item()
             mean_rec_loss += results_test.rec_loss.item()
 
@@ -250,8 +250,8 @@ if __name__ == '__main__':
     rnn_hidden_dim = config['model_config']['VAE_model']['RNN_hidden_dim']
     epochs_num = config['general_config']['epochs']
     lr = config['general_config']['lr']
-    kld_beta = config['model_config']['VAE_model']['kld_beta']
-    kld_beta = float(kld_beta)
+    kld_beta_ = config['model_config']['VAE_model']['kld_beta']
+    kld_beta_ = float(kld_beta_)
 
     # hyperparameters
     x_dim = input_dim
@@ -284,7 +284,7 @@ if __name__ == '__main__':
     # writer = SummaryWriter(log_dir=tensorboard_dir)
     # writer.add_graph(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[100, 3500])
+    schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[50, 3500])
 
     # if previous_check_point is not None:
     #     print(f"Loading checkpoint '{previous_check_point}'")
@@ -311,7 +311,7 @@ if __name__ == '__main__':
                                                            plot_dir=train_results_dir,
                                                            plot_every_epoch=plot_every_epoch,
                                                            train_loader=train_loader,
-                                                           kld_beta=kld_beta,
+                                                           kld_beta=kld_beta_,
                                                            optimizer=optimizer)
 
         train_loss_list.append(train_loss)
@@ -335,8 +335,9 @@ if __name__ == '__main__':
                 torch.save(state, model_dir)
 
         schedular.step()
-        test_loss, test_rec_loss, test_kld_loss = test(epoch_test=epoch, model=model,plot_dir=test_results_dir,
-                                                       test_loader=test_loader, plot_every_epoch=plot_every_epoch)
+        test_loss, test_rec_loss, test_kld_loss = test(epoch_test=epoch, model=model, plot_dir=test_results_dir,
+                                                       test_loader=test_loader, plot_every_epoch=plot_every_epoch,
+                                                       kld_beta=kld_beta_)
         test_loss_list.append(test_loss)
         test_rec_loss_list.append(test_rec_loss)
         test_kld_loss_list.append(test_kld_loss)
@@ -358,7 +359,7 @@ if __name__ == '__main__':
         # writer.add_scalar('Train/Reconstruction_Loss', train_rec_loss, epoch)
         # writer.add_scalar('Test/Reconstruction_Loss', test_rec_loss, epoch)
         loss_path = os.path.join(train_results_dir, 'loss_dict.pkl')
-        if epoch % 2 == 0:
+        if epoch % plot_every_epoch == 0:
             with open(loss_path, 'wb') as file:
                 pickle.dump(loss_dict, file)
             plot_loss_dict(loss_dict=loss_dict, epoch_num=epoch, plot_dir=train_results_dir)
