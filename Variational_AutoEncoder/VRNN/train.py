@@ -16,7 +16,7 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_I_experiment_ import VRNNGauss
+from vrnn_gauss_I_experiment_2 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
