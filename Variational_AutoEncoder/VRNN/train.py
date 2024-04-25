@@ -71,18 +71,15 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
         # tqdm.write(message)
         if epoch_train % plot_every_epoch == 0:
             if batch_idx % 100 == 0:
-                one_data = data[10].unsqueeze(0)
-                results_ = model(one_data)
-                z_latent = torch.stack(results_.z_latent, dim=2)
-                # sample = model.sample(torch.tensor(150, device=device))
-                dec_mean_tensor = torch.cat(results_.decoder_mean, dim=0)  # before .squeeze() shape (input_size, input_dim)
-                # dec_std_tensor = torch.cat(results_.decoder_std, dim=0)   # .squeeze()
-                dec_mean_np = dec_mean_tensor.permute(1, 0).cpu().detach().numpy()
-                # dec_std_np = dec_std_tensor.cpu().detach().numpy()
-                # dec_variance_np = np.square(dec_std_np)
-                plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
-                                   Sx=results_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
-                                   meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
+                signal_ = data[0]
+                sx_ = results.Sx.permute(1, 2, 0)[0]
+                z_latent_ = torch.stack(results.z_latent, dim=2)[0]
+                dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
+                plot_scattering_v2(signal=signal_.detach().cpu().numpy(),
+                                   Sx=sx_.detach().cpu().numpy(),
+                                   meta=None,
+                                   Sxr=dec_mean_.detach().cpu().numpy(),
+                                   z_latent=z_latent_.detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch_train}_batch_{batch_idx}_train')
 
     # print(f'Train Loop train loss is ====> {train_loss_tl}')
