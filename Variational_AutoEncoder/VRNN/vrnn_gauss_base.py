@@ -102,11 +102,17 @@ class VrnnGaussAbs(nn.Module, ABC):
 
         return phi_h_t
 
+    # @staticmethod
+    # def _modify_z(z, modify_dims, shift, scale):
+    #     for i in modify_dims:
+    #         z[:, i] = scale[i] * z[:, i] + shift[i]
+    #     return z
+
     @staticmethod
     # todo make it same is _modify_h
     def _modify_z(z, modify_dims, shift, scale):
-        for i in modify_dims:
-            z[:, i] = scale[i] * z[:, i] + shift[i]
+        for index, dim in enumerate(modify_dims):
+            z[:, dim] = scale[index] * z[:, dim] + shift[index]
         return z
 
     @staticmethod

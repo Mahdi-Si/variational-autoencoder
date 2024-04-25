@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 from Variational_AutoEncoder.models.dataset_transform import ScatteringTransform
 # Instantiate your ScatteringTransform model
 model = ScatteringTransform(input_size=2400, input_dim=1, log_stat=(np.zeros(13), np.ones(13)), device='cpu')

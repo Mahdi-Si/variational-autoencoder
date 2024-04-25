@@ -21,7 +21,7 @@ from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse
 
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_I import VRNNGauss
+from vrnn_gauss_I_experiment_ import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
 
@@ -96,40 +96,40 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
                 epoch_data_collected.append(data_dict)
 
             # selected_idx = np.random.randint(0, batched_data_t.shape[0], 10)
-        #     selected_idx = [0, 1, 2]
-        #     for idx in selected_idx:
-        #         selected_signal = batched_data_t[idx]
-        #         Sx = Sx_t_[idx]  # might need to permute (1, 0)
-        #         z_latent = z_latent_t_[idx]
-        #         # z_latent = h_hidden__[idx]
-        #         z_latent_mean = z_latent
-        #         z_latent_std = enc_std_t_[idx]
-        #         kld_values = kld_values_t_[idx]
-        #         dec_mean_mean = dec_mean_t_[idx]
-        #         dec_mean_std = dec_std_t_[idx]
-        #         h_hidden = h_hidden_t__[idx]
-        #         plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
-        #                               Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
-        #                               Sxr_std=dec_mean_std.detach().cpu().numpy(),
-        #                               z_latent_mean=z_latent_mean.detach().cpu().numpy(),
-        #                               z_latent_std=z_latent_std.detach().cpu().numpy(),
-        #                               kld_values=kld_values.detach().cpu().numpy(),
-        #                               h_hidden_mean=h_hidden.detach().cpu().numpy(),
-        #                               plot_latent=True,
-        #                               plot_klds=True,
-        #                               plot_state=False,
-        #                               # new_sample=new_sample.detach().cpu().numpy(),
-        #                               plot_dir=save_dir, tag=f'B_{j}_{idx}_')
-        #         plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
-        #                            Sx=Sx.detach().cpu().numpy(), meta=None,
-        #                            Sxr=dec_mean_mean.detach().cpu().numpy(),
-        #                            Sxr_std=dec_mean_std.detach().cpu().numpy(),
-        #                            z_latent=z_latent_mean.detach().cpu().numpy(),
-        #                            plot_dir=save_dir, tag=f'B_{j}_{idx}_')
-        # # mse_all_data (dataset_size, input_dim)
-        # plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
-        #                  tag=f'mses_{tag}',
-        #                  plot_dir=base_dir)
+            selected_idx = [0, 1, 2]
+            for idx in selected_idx:
+                selected_signal = batched_data_t[idx]
+                Sx = Sx_t_[idx]  # might need to permute (1, 0)
+                z_latent = z_latent_t_[idx]
+                # z_latent = h_hidden__[idx]
+                z_latent_mean = z_latent
+                z_latent_std = enc_std_t_[idx]
+                kld_values = kld_values_t_[idx]
+                dec_mean_mean = dec_mean_t_[idx]
+                dec_mean_std = dec_std_t_[idx]
+                h_hidden = h_hidden_t__[idx]
+                plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                                      Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
+                                      Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                      z_latent_mean=z_latent_mean.detach().cpu().numpy(),
+                                      z_latent_std=z_latent_std.detach().cpu().numpy(),
+                                      kld_values=kld_values.detach().cpu().numpy(),
+                                      h_hidden_mean=h_hidden.detach().cpu().numpy(),
+                                      plot_latent=True,
+                                      plot_klds=True,
+                                      plot_state=False,
+                                      # new_sample=new_sample.detach().cpu().numpy(),
+                                      plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+                plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                                   Sx=Sx.detach().cpu().numpy(), meta=None,
+                                   Sxr=dec_mean_mean.detach().cpu().numpy(),
+                                   Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                   z_latent=z_latent_mean.detach().cpu().numpy(),
+                                   plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+        # mse_all_data (dataset_size, input_dim)
+        plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
+                         tag=f'mses_{tag}',
+                         plot_dir=base_dir)
         mse_average = mse_all_data.mean(dim=0)
         print('==' * 50)
         print(f'MSE each dim: {mse_average}')
@@ -180,13 +180,13 @@ if __name__ == '__main__':
     print(yaml.dump(config, sort_keys=False, default_flow_style=False))
     print('==' * 50)
     # Preparing training and testing datasets --------------------------------------------------------------------------
-    dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
     # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     stat_path = os.path.normpath(config['dataset_config']['stat_path'])
     batch_size = config['general_config']['batch_size']['train']
     # batch_size = 2
-    # dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
+    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
     fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     data_loader_healthy = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
@@ -227,37 +227,40 @@ if __name__ == '__main__':
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h66-l9-gI\VRNN-4000.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\experiment_h36_l8\VRNN-3858.pth")
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
                            modify_z=None, base_dir=inference_results_dir, tag='test_1')
-    # columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
-    # columns.insert(0, 'Changed')
-    # df = pd.DataFrame(columns=columns)
-    # df_2 = pd.DataFrame(columns=columns)
-    # final_list = ["No Change"] + mse_average.cpu().tolist()
-    # df.loc[len(df)] = final_list
-    # df_2.loc[len(df_2)] = final_list
-    # for i in range(latent_dim):
-    #     modify_dims_z = list(range(0, latent_dim))
-    #     # scale = [int(x) for x in np.zeros(latent_dim)]
-    #     scale = np.zeros(latent_dim).astype(int).tolist()
-    #     scale[i] = int(5)
-    #     shift = [int(x) for x in np.zeros(latent_dim)]
-    #     modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
-    #     print(f'modified z {i}: \n {modify_z_dict}')
-    #     print('=='*50)
-    #
-    #     mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-    #                       modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
-    #
-    #     final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
-    #     df.loc[len(df)] = final_list
-    #
-    # df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
+    columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
+    columns.insert(0, 'Changed')
+    df = pd.DataFrame(columns=columns)
+    df_2 = pd.DataFrame(columns=columns)
+    final_list = ["No Change"] + mse_average.cpu().tolist()
+    df.loc[len(df)] = final_list
+    df_2.loc[len(df_2)] = final_list
+    for i in range(latent_dim):
+        modify_dims_z = [int(i)]
+        scale = [int(0)]
+        shift = [int(0)]
+        # modify_dims_z = list(range(0, latent_dim))
+        # scale = [int(x) for x in np.zeros(latent_dim)]
+        # scale = np.ones(latent_dim).astype(int).tolist()
+        # scale[i] = int(0)
+        # shift = [int(x) for x in np.zeros(latent_dim)]
+        modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
+        print(f'modified z {i}: \n {modify_z_dict}')
+        print('=='*50)
+
+        mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
+                          modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
+
+        final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
+        df.loc[len(df)] = final_list
+
+    df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
     #
     # for i in range(0, rnn_hidden_dim):
     #     modify_dims_h = [int(i)]

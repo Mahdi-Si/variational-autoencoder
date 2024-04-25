@@ -29,55 +29,109 @@ class VRNNGauss(VrnnGaussAbs):
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, int(self.h_dim / 3)),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 2)),
+            nn.BatchNorm1d(int(self.h_dim / 3)),
+            nn.Linear(int(self.h_dim / 3), int(5 * self.h_dim / 12)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(5 * self.h_dim / 12)),
+            nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
+
         )
 
-        self.phi_z = nn.Sequential(
-            nn.Linear(self.z_dim, int(self.h_dim / 3)),
-            nn.ReLU(),
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 2)),
-            # nn.ReLU(),
-            # nn.Linear(int(self.h_dim / 2), int(2 * self.h_dim / 3))
-        )
+        self.r_phi_y = nn.Linear(self.input_dim, int(self.h_dim / 2))
 
         self.phi_h = nn.Sequential(
-            nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
+            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.BatchNorm1d(int(5 * self.h_dim / 6)),
+            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(2 * self.h_dim / 3)),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2))
+        )
+
+        self.r_phi_h = nn.Sequential(
+            nn.Linear(self.h_dim, int(self.h_dim / 2))
         )
 
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
-            nn.Linear(2 * int(self.h_dim / 2), int(2 * self.h_dim / 3)),
+            nn.Linear(2 * int(self.h_dim / 2), int(5 * self.h_dim / 6)),
             nn.ReLU(),
+            nn.BatchNorm1d(int(5 * self.h_dim / 6)),
+            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(2 * self.h_dim / 3)),
             nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.ReLU(),
+            nn.BatchNorm1d(int(self.h_dim / 2))
+        )
+
+        self.r_enc = nn.Sequential(
+            nn.Linear(self.h_dim, int(self.h_dim / 2))
         )
         self.enc_mean = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 3), self.z_dim)
+            nn.BatchNorm1d(int(5 * self.h_dim / 12)),
+            nn.Linear(int(5 * self.h_dim / 12), self.z_dim)
         )
         self.enc_logvar = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 3), self.z_dim),
+            nn.BatchNorm1d(int(5 * self.h_dim / 12)),
+            nn.Linear(int(5 * self.h_dim / 12), self.z_dim),
             # nn.ReLU(),
             nn.Softplus(),
+        )
+
+        self.phi_z = nn.Sequential(
+            nn.Linear(self.z_dim, input_dim),
+            nn.ReLU(),
+            nn.BatchNorm1d(input_dim),
+            nn.Linear(input_dim, int(5 * self.h_dim / 12)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(5 * self.h_dim / 12)),
+            nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
+        )
+
+        self.r_phi_z = nn.Sequential(
+            nn.Linear(self.z_dim, int(self.h_dim / 2))
         )
 
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
             nn.Linear(int(self.h_dim / 2), int(2 * self.h_dim / 3)),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), self.h_dim),
-            nn.ReLU(),)
-        self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, self.h_dim),
+            nn.BatchNorm1d(int(2 * self.h_dim / 3)),
+            nn.Linear(int(2 * self.h_dim / 3), int(5 * self.h_dim / 6)),
             nn.ReLU(),
-            nn.Linear(self.h_dim, self.input_dim))
+            nn.BatchNorm1d(int(5 * self.h_dim / 6)),
+            nn.Linear(int(5 * self.h_dim / 6), self.h_dim),
+            nn.ReLU(),
+            nn.BatchNorm1d(self.h_dim)
+        )
+
+        self.r_dec = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), self.h_dim)
+        )
+
+        self.dec_mean = nn.Sequential(
+            nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(2 * self.h_dim / 3)),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(self.h_dim / 2)),
+            nn.Linear(int(self.h_dim / 2), self.input_dim)
+        )
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, self.input_dim),
+            nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(2 * self.h_dim / 3)),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.ReLU(),
+            nn.BatchNorm1d(int(self.h_dim / 2)),
+            nn.Linear(int(self.h_dim / 2), self.input_dim),
             # nn.ReLU(),
             nn.Softplus(),
         )
@@ -115,12 +169,14 @@ class VRNNGauss(VrnnGaussAbs):
         for t in range(y.size(0)):
             # feature extraction: y_t
             # phi_y_t = self.phi_y(y[:, :, t])  # y original is shape (batch_size, input_size, input_dim)
-            phi_y_t = self.phi_y(y[t])  # should be (input_size, batch_size, input_dim)
+            phi_y_t = self.phi_y(y[t]) + self.r_phi_y(y[t])
             # feature extraction: u_t
             # phi_u_t = self.phi_u(u[:, :, t])
-            phi_h_t = self.phi_h(h[-1])
+            phi_h_t = self.phi_h(h[-1]) + self.r_phi_h(h[-1])
             # encoder: y_t, h_t -> z_t
-            enc_t = self.enc(torch.cat([phi_y_t, phi_h_t], 1))
+            enc_t = (self.enc(torch.cat([phi_y_t, phi_h_t], 1)) +
+                     self.r_enc(torch.cat([phi_y_t, phi_h_t], 1)))
+
             enc_mean_t = self.enc_mean(enc_t)
             enc_logvar_t = self.enc_logvar(enc_t)
 
@@ -134,11 +190,9 @@ class VRNNGauss(VrnnGaussAbs):
                 z_t = self._modify_z(z=z_t, modify_dims=modify_dims, scale=scale, shift=shift)
 
             # feature extraction: z_t
-            phi_z_t = self.phi_z(z_t)
+            phi_z_t = self.phi_z(z_t) + self.r_phi_z(z_t)
 
-            # decoder: h_t, z_t -> y_t
-            # dec_t = self.dec(torch.cat([phi_z_t, h[-1]], 1))
-            dec_t = self.dec(phi_z_t)
+            dec_t = self.dec(phi_z_t) + self.r_dec(phi_z_t)
             dec_mean_t = self.dec_mean(dec_t)
             dec_logvar_t = self.dec_logvar(dec_t)
             pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
