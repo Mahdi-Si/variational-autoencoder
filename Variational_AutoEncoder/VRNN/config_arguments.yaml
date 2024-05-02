@@ -1,29 +1,31 @@
 general_config:
-  tag: vrnn_gauss_tests_z_allzero
+  tag: experiment_-h36-l9_pdfs
   checkpoint_path: null
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0.0
-  checkpoint_frequency: 20
+  checkpoint_frequency: 1
   plot_frequency: 1
-  epochs: 100
+  epochs: 4000
+  channel_num: 1
   batch_size:
-    train: 512
+    train: 500
 
 model_config:
   VAE_model:
     raw_input_size: 2400
     input_size: 150
-    input_dim: 11
-    RNN_hidden_dim: 11
+    input_dim: 22
+    RNN_hidden_dim: 66
     latent_size: 5
     num_RNN_layers: 4
-    kld_beta: 1
+    kld_beta: 0.00001
 
 
 folders_config:
   out_dir_base: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/runs/variational-autoencoder
 
 dataset_config:
-    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset
+#    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/HEALHRY_Jsons
+    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset_for_test
     stat_path: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/log_stats.npy
-    aux_dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/HIE_Jsons
+    aux_dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/selected_one_jason

@@ -152,9 +152,9 @@ def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+    plt.savefig(plot_dir + '/' + tag + '_' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
 
@@ -185,11 +185,11 @@ def plot_original_reconstructed(original_x, reconstructed_x, plot_dir=None, tag=
     ax[0].grid(True)
     ax[1].grid(True)
     ax[2].grid(True)
-    plt.savefig(plot_dir + '/' + tag + '_' + '_st.png', bbox_inches='tight', orientation='landscape')
+    plt.savefig(plot_dir + '/' + tag + '_' + '_st.pdf', bbox_inches='tight', orientation='landscape')
     plt.close(fig)
 
 
-def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
+def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_second_channel=False,
                        Sxr=None, Sxr_std=None, z_latent=None, plot_dir=None, tag=''):
     """
     Plots the results of the model.
@@ -213,20 +213,36 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     # else:
     #     # N_ROWS = 2
     #     N_ROWS = len(plot_order) + 1
-    N_ROWS = 4 + (Sx.shape[0])
+    if plot_second_channel:
+        N_ROWS = 5 + (Sx.shape[0])
+        signal_1 = signal[:, 0]
+        signal_2 = signal[:, 1]
+    else:
+        N_ROWS = 4 + (Sx.shape[0])
+        signal_1 = signal
+        signal_2 = signal
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
     plt.set_cmap(cmstr)
     plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+
     i_row = 0
 
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                            gridspec_kw={"width_ratios": [80, 1]})
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
+    ax[i_row, 0].plot(t_in, signal_1, linewidth=0.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
+
+    if plot_second_channel:
+        i_row += 1
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].plot(t_in, signal_2, linewidth=0.5)
+        ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+        ax[i_row, 0].set_xticklabels([])
+        ax[i_row, 0].set_ylabel('UP')
 
     i_row += 1
     imgplot = ax[i_row, 0].imshow(Sx, aspect='auto', norm="symlog",
@@ -273,9 +289,9 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None,
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+    plt.savefig(plot_dir + '/' + tag + '_' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
 
@@ -304,7 +320,7 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
     # Save the figure as an HTML file
     fig_path = os.path.join(plot_dir, 'loss_plot.html')
     fig.write_html(fig_path)
-    # plt.savefig(f'{plot_dir}/Loss_st.png', bbox_inches='tight', dpi=50)
+    # plt.savefig(f'{plot_dir}/Loss_st.pdf', bbox_inches='tight', dpi=50)
 
 
 def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None, h_hidden_mean=None,
@@ -403,9 +419,9 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     plt.set_cmap(cmstr)
     fig.delaxes(ax[1][1])
     ax[0, 1].set_axis_off()
-    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.png', bbox_inches='tight',
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + 'overall' + '.png', bbox_inches='tight', orientation='landscape', dpi=300)
+    plt.savefig(plot_dir + '/' + tag + 'overall' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=300)
     plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
     # plot latent dim and histogram of it
@@ -453,7 +469,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         #     # ax[i_row, 0].set_xticklabels([])
         #     ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
 
-        plt.savefig(plot_dir + '/' + tag + '_latent' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.savefig(plot_dir + '/' + tag + '_latent' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -514,7 +530,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
             # ax[i_row, 0].set_xticklabels([])
             ax[i_row, 0].set_ylabel(f'Hidden Dim Histogram {i}')
 
-        plt.savefig(plot_dir + '/' + tag + '_hidden' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.savefig(plot_dir + '/' + tag + '_hidden' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -544,7 +560,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax3 = ax[i_row, 0].twinx()
         ax3.plot(t_2, signal, linewidth=2)
 
-        plt.savefig(plot_dir + '/' + tag + '_klds' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.savefig(plot_dir + '/' + tag + '_klds' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
 
 
@@ -569,7 +585,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     #     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     #     ax[i_row, 0].set_xticklabels([])
     #     ax[i_row, 0].set_ylabel('New Sample')
-    # plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.png', bbox_inches='tight', orientation='landscape', dpi=100)
+    # plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
     # plt.close(fig)
 
     N_ROWS = 2 * Sx.shape[0]
@@ -597,6 +613,65 @@ def plot_general_mse(signal=None, plot_order=None, Sx=None, meta=None,
         ax[i_row, 0].set_ylabel(f'mse coefficient {i}')
         avg_mse = np.mean(all_mse[i, :])
         ax[i_row, 0].set_title(f'Average MSE: {avg_mse:.5f}')
-    plt.savefig(plot_dir + '/' + tag + '_mses' + '.png', bbox_inches='tight', orientation='landscape', dpi=50)
+    plt.savefig(plot_dir + '/' + tag + '_mses' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
+
+def plot_generated_samples(sx, sx_mean, sx_std, input_len, tag='_', plot_dir=None):
+    Fs = 4
+    log_eps = 1e-3
+    N = input_len
+    N_ROWS = 3 + (sx.shape[0])
+    cmstr = 'Blues'
+    plt.set_cmap(cmstr)
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+    i_row = 0
+
+    fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                           gridspec_kw={"width_ratios": [80, 1]})
+    imgplot = ax[i_row, 0].imshow(sx, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, sx.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Sample')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(sx_mean, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, sx.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Mean')
+
+    i_row += 1
+    imgplot = ax[i_row, 0].imshow(sx_std, aspect='auto', norm="symlog",
+                                  extent=[0, N / Fs, sx.shape[0], 0])
+    ax[i_row, 1].set_axis_on()
+    fig.colorbar(imgplot, cax=ax[i_row, 1])
+    ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
+    ax[i_row, 0].set_xticklabels([])
+    ax[i_row, 0].set_ylabel('Standard Deviation')
+
+    for i in range(sx.shape[0]):
+        i_row += 1
+        ax[i_row, 0].plot(sx_mean[i, :], linewidth=1, label="True")
+        if sx_std is not None:
+            ax[i_row, 0].fill_between(np.arange(len(sx_std[i, :])),
+                                      sx_mean[i, :] - sx_std[i, :],
+                                      sx_mean[i, :] + sx_std[i, :],
+                                      color='blue', alpha=0.1, label='Std dev')
+        ax[i_row, 0].legend()
+        ax[i_row, 1].set_axis_off()
+        ax[i_row, 0].set_ylabel(f'Mean and Std of Coefficient {i}')
+
+    cmstr = 'bwr'
+    plt.set_cmap(cmstr)
+    fig.delaxes(ax[1][1])
+    ax[0, 1].set_axis_off()
+    # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
+    #             orientation='landscape')
+    plt.savefig(plot_dir + '/' + tag + '_' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+    plt.close(fig)

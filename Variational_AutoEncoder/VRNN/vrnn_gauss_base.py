@@ -47,7 +47,7 @@ class VrnnGaussAbs(nn.Module, ABC):
                                                         device=device)
 
     @abstractmethod
-    def generate(self, u):
+    def generate(self, input_size, batch_size):
         pass
 
     @staticmethod

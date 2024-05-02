@@ -141,7 +141,9 @@ class VRNNGauss(VrnnGaussAbs):
         self.rnn = nn.LSTM(self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
 
     def forward(self, y):
-        y, meta = self.scattering_transform(y)
+        y_1, meta = self.scattering_transform(y[:, 0, :])
+        y_2, meta_2 = self.scattering_transform(y[:, 1, :])
+        y = torch.cat((y_1[:, :, 0:int(self.input_dim/2)], y_2[:, :, 0:int(self.input_dim/2)]), dim=2)
         scattering_original = y
         loss = torch.zeros(1, device=self.device, requires_grad=True)
         # initialization

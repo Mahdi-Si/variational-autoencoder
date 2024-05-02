@@ -16,8 +16,8 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_I_experiment_4 import VRNNGauss
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
+from vrnn_gauss_I_experiment_2_channel_5 import VRNNGauss
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -75,7 +75,9 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
                 sx_ = results.Sx.permute(1, 2, 0)[0]
                 z_latent_ = torch.stack(results.z_latent, dim=2)[0]
                 dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
-                plot_scattering_v2(signal=signal_.detach().cpu().numpy(),
+                signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
+                # signal = one_data.permute(1, 0).detach().cpu().numpy()  # for one channels
+                plot_scattering_v2(signal=signal,
                                    Sx=sx_.detach().cpu().numpy(),
                                    meta=None,
                                    Sxr=dec_mean_.detach().cpu().numpy(),
@@ -118,7 +120,9 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
             dec_variance_np = np.square(dec_std_np)
             if epoch_test % plot_every_epoch == 0:
             # if epoch > 0:
-                plot_scattering_v2(signal=one_data.permute(1, 0).detach().cpu().numpy(),
+                signal = one_data.squeeze(0).permute(1, 0).detach().cpu().numpy()   # for two channels
+                # signal = one_data.permute(1, 0).detach().cpu().numpy()  # for one channels
+                plot_scattering_v2(signal=signal, plot_second_channel=True,
                                    Sx=results_test_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch_test}_batch_{i}_test')
@@ -207,7 +211,8 @@ if __name__ == '__main__':
     # max_fhr = max([max(fhr) for fhr in fhr_values])
     # normalize_data(healthy_list, min_fhr, max_fhr)
     # normalize_data(hie_list, min_fhr, max_fhr)
-    fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
+    # fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
+    fhr_healthy_dataset = FhrUpPreload(dataset_dir)
     # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     # data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
 
@@ -303,7 +308,12 @@ if __name__ == '__main__':
     test_kld_loss_list = []
     # test_nll_loss_list = []
     for epoch in tqdm(range(start_epoch, n_epochs + 1), desc='Epoch:'):
-        log_resource_usage()
+        # log_resource_usage()
+        if epoch == 4000:
+            new_batch_size = batch_size // 2  # Reduce batch size
+            print(f'Reducing batch size to {new_batch_size}')
+            train_loader = DataLoader(train_dataset, batch_size=new_batch_size, shuffle=True, num_workers=20)
+            test_loader = DataLoader(test_dataset, batch_size=new_batch_size, shuffle=False, num_workers=20)
         train_loss, train_rec_loss, train_kld_loss = train(model=model, epoch_train=epoch,
                                                            plot_dir=train_results_dir,
                                                            plot_every_epoch=plot_every_epoch,

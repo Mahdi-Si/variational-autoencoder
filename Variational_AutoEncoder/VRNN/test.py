@@ -1,27 +1,22 @@
-import math
-import torch.nn as nn
+
 import torch.utils
 import torch.utils.data
-from torchvision import datasets, transforms
-from torch.autograd import Variable
-import matplotlib.pyplot as plt 
-from model import VRNN
+import matplotlib.pyplot as plt
 import os
 import yaml
 import logging
 from datetime import datetime
 import sys
-import pickle
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
-import torch.nn.functional as F
 import numpy as np
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse, \
+    plot_generated_samples
 
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_I_experiment_ import VRNNGauss
+from vrnn_gauss_I_experiment_5 import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
 
@@ -34,9 +29,8 @@ else:
     device = torch.device('cpu')
 
 
-def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, base_dir=None, tag='_'):
-    save_dir = os.path.join(base_dir, tag)
-    os.makedirs(save_dir, exist_ok=True)
+def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_selected=False,
+             modify_h=None, modify_z=None, base_dir=None, tag='_'):
     model_t.modify_z = modify_z
     model_t.modify_h = modify_h
     model_t.to(device)
@@ -94,20 +88,19 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
                     data_dict[f'std_{n}'] = std_values.detach().cpu().numpy()[m, n]
 
                 epoch_data_collected.append(data_dict)
-
-            # selected_idx = np.random.randint(0, batched_data_t.shape[0], 10)
-            selected_idx = [0, 1, 2]
-            for idx in selected_idx:
-                selected_signal = batched_data_t[idx]
-                Sx = Sx_t_[idx]  # might need to permute (1, 0)
-                z_latent = z_latent_t_[idx]
-                # z_latent = h_hidden__[idx]
+            if average_results:
+                tag = tag + 'repeated_and_averaged'
+                save_dir = os.path.join(base_dir, tag)
+                os.makedirs(save_dir, exist_ok=True)
+                selected_signal = batched_data_t[0]
+                Sx = Sx_t_[0]
+                z_latent = torch.mean(z_latent_t_, dim=0)
                 z_latent_mean = z_latent
-                z_latent_std = enc_std_t_[idx]
-                kld_values = kld_values_t_[idx]
-                dec_mean_mean = dec_mean_t_[idx]
-                dec_mean_std = dec_std_t_[idx]
-                h_hidden = h_hidden_t__[idx]
+                z_latent_std = torch.std(z_latent_t_, dim=0)
+                kld_values = torch.mean(kld_values_t_, dim=0)
+                dec_mean_mean = torch.mean(dec_mean_t_, dim=0)
+                dec_mean_std = torch.mean(dec_std_t_, dim=0)
+                h_hidden = torch.mean(h_hidden_t__, dim=0)
                 plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
                                       Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
                                       Sxr_std=dec_mean_std.detach().cpu().numpy(),
@@ -119,17 +112,54 @@ def run_test(model_t, data_loader, input_dim_t, modify_h=None, modify_z=None, ba
                                       plot_klds=True,
                                       plot_state=False,
                                       # new_sample=new_sample.detach().cpu().numpy(),
-                                      plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+                                      plot_dir=save_dir, tag=f'B_')
                 plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
                                    Sx=Sx.detach().cpu().numpy(), meta=None,
                                    Sxr=dec_mean_mean.detach().cpu().numpy(),
                                    Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                    z_latent=z_latent_mean.detach().cpu().numpy(),
-                                   plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+                                   plot_dir=save_dir, tag=f'B_')
+
+            else:
+                if plot_selected:
+                    tag = tag + 'selected_sequences'
+                    save_dir = os.path.join(base_dir, tag)
+                    os.makedirs(save_dir, exist_ok=True)
+                    selected_idx = [0, 1, 2, 3, 4]
+                    # selected_idx = np.arange(len(batched_data_t))
+                    for idx in selected_idx:
+                        selected_signal = batched_data_t[idx]
+                        Sx = Sx_t_[idx]  # might need to permute (1, 0)
+                        z_latent = z_latent_t_[idx]
+                        # z_latent = h_hidden__[idx]
+                        z_latent_mean = z_latent
+                        z_latent_std = enc_std_t_[idx]
+                        kld_values = kld_values_t_[idx]
+                        dec_mean_mean = dec_mean_t_[idx]
+                        dec_mean_std = dec_std_t_[idx]
+                        h_hidden = h_hidden_t__[idx]
+                        plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                                              Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
+                                              Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                              z_latent_mean=z_latent_mean.detach().cpu().numpy(),
+                                              z_latent_std=z_latent_std.detach().cpu().numpy(),
+                                              kld_values=kld_values.detach().cpu().numpy(),
+                                              h_hidden_mean=h_hidden.detach().cpu().numpy(),
+                                              plot_latent=True,
+                                              plot_klds=True,
+                                              plot_state=False,
+                                              # new_sample=new_sample.detach().cpu().numpy(),
+                                              plot_dir=save_dir, tag=f'B_{j}_{idx}_')
+                        plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                                           Sx=Sx.detach().cpu().numpy(), meta=None,
+                                           Sxr=dec_mean_mean.detach().cpu().numpy(),
+                                           Sxr_std=dec_mean_std.detach().cpu().numpy(),
+                                           z_latent=z_latent_mean.detach().cpu().numpy(),
+                                           plot_dir=save_dir, tag=f'B_{j}_{idx}_')
         # mse_all_data (dataset_size, input_dim)
-        plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
-                         tag=f'mses_{tag}',
-                         plot_dir=base_dir)
+        # plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
+        #                  tag=f'mses_{tag}',
+        #                  plot_dir=base_dir)
         mse_average = mse_all_data.mean(dim=0)
         print('==' * 50)
         print(f'MSE each dim: {mse_average}')
@@ -227,40 +257,38 @@ if __name__ == '__main__':
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\experiment_h36_l8\VRNN-3858.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\layer-norm-h36-l9\VRNN-7912.pth")
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-                           modify_z=None, base_dir=inference_results_dir, tag='test_1')
-    columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
-    columns.insert(0, 'Changed')
-    df = pd.DataFrame(columns=columns)
-    df_2 = pd.DataFrame(columns=columns)
-    final_list = ["No Change"] + mse_average.cpu().tolist()
-    df.loc[len(df)] = final_list
-    df_2.loc[len(df_2)] = final_list
-    for i in range(latent_dim):
-        modify_dims_z = [int(i)]
-        scale = [int(0)]
-        shift = [int(0)]
-        # modify_dims_z = list(range(0, latent_dim))
-        # scale = [int(x) for x in np.zeros(latent_dim)]
-        # scale = np.ones(latent_dim).astype(int).tolist()
-        # scale[i] = int(0)
-        # shift = [int(x) for x in np.zeros(latent_dim)]
-        modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
-        print(f'modified z {i}: \n {modify_z_dict}')
-        print('=='*50)
+                           plot_selected=True, modify_z=None, base_dir=inference_results_dir, tag='test_1')
+    # columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
+    # columns.insert(0, 'Changed')
+    # df = pd.DataFrame(columns=columns)
+    # df_2 = pd.DataFrame(columns=columns)
+    # final_list = ["No Change"] + mse_average.cpu().tolist()
+    # df.loc[len(df)] = final_list
+    # df_2.loc[len(df_2)] = final_list
+    # for i in range(latent_dim):
+    #     modify_dims_z = list(range(0, latent_dim))
+    #     scale = [int(x) for x in np.ones(latent_dim)]
+    #     # scale = np.ones(latent_dim).astype(int).tolist()
+    #     scale[i] = int(10)
+    #     shift = [int(x) for x in np.zeros(latent_dim)]
+    #     modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
+    #     print(f'modified z {i}: \n {modify_z_dict}')
+    #     print('=='*50)
+    #
+    #     mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
+    #                       modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
+    #
+    #     final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
+    #     df.loc[len(df)] = final_list
+    #
+    # df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
 
-        mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-                          modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
-
-        final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
-        df.loc[len(df)] = final_list
-
-    df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
     #
     # for i in range(0, rnn_hidden_dim):
     #     modify_dims_h = [int(i)]
@@ -276,3 +304,24 @@ if __name__ == '__main__':
     #     final_list = [f'Hidden_dim_{i}'] + mse_average.cpu().tolist()
     #     df_2.loc[len(df_2)] = final_list
     # df_2.to_csv((inference_results_dir + '/' + 'mse_losses_hidden_dims.csv'), index=False)
+    desired_index = 2  # example index
+    repeated_sample_dataset = RepeatSampleDataset(fhr_healthy_dataset, desired_index)
+
+    batch_size_repeated = 1000
+    dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
+    mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim, average_results=True,
+                                    modify_h=None, modify_z=None, base_dir=inference_results_dir, tag='repeated_data')
+
+    g_samples, g_samples_mean, g_samples_sigma = model.generate(input_size=150, batch_size=100)
+    g_samples = g_samples.permute(1, 2, 0)
+    g_samples_mean = g_samples_mean.permute(1, 2, 0)
+    g_samples_sigma = g_samples_sigma.permute(1, 2, 0)
+    tag = 'sampled_'
+    save_dir_g = os.path.join(inference_results_dir, tag)
+    os.makedirs(save_dir_g, exist_ok=True)
+    selected_idx = np.random.randint(0, 100, 5)
+    for k in selected_idx:
+        plot_generated_samples(sx=g_samples[k].detach().cpu().numpy(),
+                               sx_mean=g_samples_mean[k].detach().cpu().numpy(),
+                               sx_std=g_samples_sigma[k].detach().cpu().numpy(),
+                               input_len=input_size, tag=f'test_gen_{k}', plot_dir=save_dir_g)

@@ -212,10 +212,9 @@ class VRNN(nn.Module):
         )
         return results
 
+    def sample(self, seq_len, batch_size):
 
-    def sample(self, seq_len):
-
-        sample = torch.zeros(seq_len, self.x_dim, device=device)
+        sample = torch.zeros(seq_len, batch_size, device=device)
 
         h = torch.zeros(self.n_layers, 1, self.h_dim, device=device)
         for t in range(seq_len):

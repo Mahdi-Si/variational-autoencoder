@@ -166,11 +166,7 @@ class VRNNGauss(VrnnGaussAbs):
 
         return results
 
-    def generate(self, u):
-        # get the batch size
-        batch_size = u.shape[0]
-        # length of the sequence to generate
-        seq_len = u.shape[-1]
+    def generate(self, output_size, batch_size):
 
         # allocation
         sample = torch.zeros(batch_size, self.input_dim, seq_len, device=self.device)

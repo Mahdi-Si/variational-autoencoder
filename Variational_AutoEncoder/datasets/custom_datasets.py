@@ -60,6 +60,30 @@ class JsonDatasetPreload(Dataset):
         # return fhr
 
 
+class FhrUpPreload(Dataset):
+    def __init__(self, json_folder_path):
+        self.data_files = [os.path.join(json_folder_path, file) for file in os.listdir(json_folder_path) if
+                           file.endswith('.json')]
+        self.samples = []
+        for file_path in self.data_files:
+            with open(file_path, 'r') as file:
+                data = json.load(file)
+                self.samples.append(data)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        sample_data = self.samples[idx]
+        fhr = torch.tensor(sample_data['fhr'])
+        up = torch.tensor(sample_data['up'])
+        guid = sample_data['GUID']
+        epoch_num = sample_data['domain_starts']/600
+        target = torch.tensor(sample_data['target'])
+        sample_weight = torch.tensor(sample_data['sample_weights'])
+        two_channel_signal = torch.stack([fhr, up], dim=0)
+        return two_channel_signal, guid, epoch_num, target, sample_weight
+
 class JsonDataset(Dataset):
     def __init__(self, json_folder_path):
         self.data_files = [os.path.join(json_folder_path, file) for file in os.listdir(json_folder_path) if
@@ -81,3 +105,16 @@ class JsonDataset(Dataset):
         sample_weight = torch.tensor(data['sample_weights'])
 
         return fhr, target, sample_weight
+
+
+class RepeatSampleDataset(Dataset):
+    def __init__(self, base_dataset, index):
+        self.base_dataset = base_dataset
+        self.index = index
+
+    def __len__(self):
+        return 500  # Define the length to be 500 as we want 500 repetitions
+
+    def __getitem__(self, idx):
+        # Always return the sample at the specified index
+        return self.base_dataset[self.index]
