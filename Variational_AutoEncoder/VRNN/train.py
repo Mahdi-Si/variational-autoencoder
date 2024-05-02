@@ -16,7 +16,7 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_I_experiment_2_channel_5 import VRNNGauss
+from vrnn_gauss_experiment_5 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -75,11 +75,12 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
                 sx_ = results.Sx.permute(1, 2, 0)[0]
                 z_latent_ = torch.stack(results.z_latent, dim=2)[0]
                 dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
-                signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
-                # signal = one_data.permute(1, 0).detach().cpu().numpy()  # for one channels
+                # signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
+                signal = signal_.detach().cpu().numpy()  # for one channels
                 plot_scattering_v2(signal=signal,
                                    Sx=sx_.detach().cpu().numpy(),
                                    meta=None,
+                                   plot_second_channel=False,
                                    Sxr=dec_mean_.detach().cpu().numpy(),
                                    z_latent=z_latent_.detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch_train}_batch_{batch_idx}_train')
@@ -120,9 +121,9 @@ def test(epoch_test=None, model=None, plot_dir=None, test_loader=None, plot_ever
             dec_variance_np = np.square(dec_std_np)
             if epoch_test % plot_every_epoch == 0:
             # if epoch > 0:
-                signal = one_data.squeeze(0).permute(1, 0).detach().cpu().numpy()   # for two channels
-                # signal = one_data.permute(1, 0).detach().cpu().numpy()  # for one channels
-                plot_scattering_v2(signal=signal, plot_second_channel=True,
+            #     signal = one_data.squeeze(0).permute(1, 0).detach().cpu().numpy()   # for two channels
+                signal = one_data.detach().cpu().numpy()  # for one channels
+                plot_scattering_v2(signal=signal, plot_second_channel=False,
                                    Sx=results_test_.Sx.squeeze(1).permute(1, 0).detach().cpu().numpy(),
                                    meta=None, Sxr=dec_mean_np, z_latent=z_latent.squeeze(0).detach().cpu().numpy(),
                                    plot_dir=plot_dir, tag=f'_epoch{epoch_test}_batch_{i}_test')
@@ -211,8 +212,8 @@ if __name__ == '__main__':
     # max_fhr = max([max(fhr) for fhr in fhr_values])
     # normalize_data(healthy_list, min_fhr, max_fhr)
     # normalize_data(hie_list, min_fhr, max_fhr)
-    # fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
-    fhr_healthy_dataset = FhrUpPreload(dataset_dir)
+    fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
+    # fhr_healthy_dataset = FhrUpPreload(dataset_dir)
     # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
     # data_loader_complete = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
 
