@@ -241,8 +241,8 @@ class VRNNGauss(VrnnGaussAbs):
             phi_z_t = self.phi_z(z_t) + self.r_phi_z(z_t)
 
             dec_t = self.dec(phi_z_t) + self.r_dec(phi_z_t)
-            dec_mean_t = self.dec_mean(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
-            dec_logvar_t = self.dec_logvar(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_mean_t_gmm = self.dec_mean(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_logvar_t_gmm = self.dec_logvar(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
             # pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
 
             # recurrence: y_t, z_t -> h_t+1
@@ -257,9 +257,20 @@ class VRNNGauss(VrnnGaussAbs):
             dec_pi_t = self.dec_pi(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
             # computing the loss
             KLD, kld_element = self.kld_gauss_(enc_mean_t, enc_logvar_t, prior_mean_t, prior_logvar_t)
-            loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t, dec_logvar_t, dec_pi_t)
+            loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
             loss = loss - loss_pred
             kld_loss = kld_loss + KLD
+
+            # GMM  ====================================================================
+            dec_mean_t = torch.sum(dec_pi_t * dec_mean_t_gmm, dim=2)
+            variances = torch.exp(dec_logvar_t_gmm)
+            mean_sq_plus_var = variances + dec_mean_t_gmm ** 2
+            weighted_variances = torch.sum(dec_pi_t * mean_sq_plus_var, dim=2)
+            mean_final_sq = dec_mean_t ** 2
+            dec_logvar_t = weighted_variances - mean_final_sq
+            dec_logvar_t = torch.log(dec_logvar_t)
+            # end   ====================================================================
+
 
             all_h.append(h)
             all_kld.append(kld_element)
