@@ -16,7 +16,7 @@ import numpy as np
 
 # from torch.utils.tensorboard import SummaryWriter
 # from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_experiment_5 import VRNNGauss
+from vrnn_gauss_GMM_experiment_5 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -201,6 +201,30 @@ if __name__ == '__main__':
     plot_every_epoch = config['general_config']['plot_frequency']
     previous_check_point = config['general_config']['checkpoint_path']
 
+    # define model and train it ----------------------------------------------------------------------------------------
+    raw_input_size = config['model_config']['VAE_model']['raw_input_size']
+    input_size = config['model_config']['VAE_model']['input_size']
+    input_dim = config['model_config']['VAE_model']['input_dim']
+    latent_dim = config['model_config']['VAE_model']['latent_size']
+    num_layers = config['model_config']['VAE_model']['num_RNN_layers']
+    rnn_hidden_dim = config['model_config']['VAE_model']['RNN_hidden_dim']
+    epochs_num = config['general_config']['epochs']
+    lr = config['general_config']['lr']
+    kld_beta_ = config['model_config']['VAE_model']['kld_beta']
+    kld_beta_ = float(kld_beta_)
+
+    # hyperparameters
+    x_dim = input_dim
+    h_dim = rnn_hidden_dim
+    z_dim = latent_dim
+    n_layers = num_layers
+    n_epochs = epochs_num
+    clip = 10
+    learning_rate = lr
+    batch_size = batch_size
+    plt.ion()
+
+    # dataset creation -------------------------------------------------------------------------------------------------
     # healthy_dataset_path = os.path.join(dataset_dir, 'HEALTHY_signal_dicts.pkl')
     # hie_dataset_path = os.path.join(dataset_dir, 'HIE_signal_dicts.pkl')
 
@@ -244,31 +268,7 @@ if __name__ == '__main__':
     # fhr_hie_dataset = FHRDataset(hie_list[0:10])
     # hie_dataloader = DataLoader(fhr_hie_dataset, batch_size=1, shuffle=False)
 
-    # define model and train it ----------------------------------------------------------------------------------------
-    raw_input_size = config['model_config']['VAE_model']['raw_input_size']
-    input_size = config['model_config']['VAE_model']['input_size']
-    input_dim = config['model_config']['VAE_model']['input_dim']
-    latent_dim = config['model_config']['VAE_model']['latent_size']
-    num_layers = config['model_config']['VAE_model']['num_RNN_layers']
-    rnn_hidden_dim = config['model_config']['VAE_model']['RNN_hidden_dim']
-    epochs_num = config['general_config']['epochs']
-    lr = config['general_config']['lr']
-    kld_beta_ = config['model_config']['VAE_model']['kld_beta']
-    kld_beta_ = float(kld_beta_)
 
-    # hyperparameters
-    x_dim = input_dim
-    h_dim = rnn_hidden_dim
-    z_dim = latent_dim
-    n_layers = num_layers
-    n_epochs = epochs_num
-    clip = 10
-    learning_rate = lr
-    batch_size = batch_size  # 128
-    print_every = 20  # batches
-    save_every = 20  # epochs
-
-    plt.ion()
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
@@ -289,16 +289,15 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     schedular = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[50, 3500])
 
-    # if previous_check_point is not None:
-    #     print(f"Loading checkpoint '{previous_check_point}'")
-    #     checkpoint = torch.load(previous_check_point)
-    #     start_epoch = checkpoint['epoch'] + 1
-    #     model.load_state_dict(checkpoint['state_dict'])
-    #     optimizer.load_state_dict(checkpoint['optimizer'])
-    #     print(f"Loaded checkpoint '{previous_check_point}' (epoch {checkpoint['epoch']})")
-    # else:
-    #     start_epoch = 1
-    start_epoch = 1
+    if previous_check_point is not None:
+        print(f"Loading checkpoint '{previous_check_point}'")
+        checkpoint = torch.load(previous_check_point)
+        start_epoch = checkpoint['epoch'] + 1
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print(f"Loaded checkpoint '{previous_check_point}' (epoch {checkpoint['epoch']})")
+    else:
+        start_epoch = 1
     train_loss_list = []
     train_rec_loss_list = []
     train_kld_loss_list = []
@@ -310,7 +309,7 @@ if __name__ == '__main__':
     # test_nll_loss_list = []
     for epoch in tqdm(range(start_epoch, n_epochs + 1), desc='Epoch:'):
         # log_resource_usage()
-        if epoch == 4000:
+        if epoch == 2000:
             new_batch_size = batch_size // 2  # Reduce batch size
             print(f'Reducing batch size to {new_batch_size}')
             train_loader = DataLoader(train_dataset, batch_size=new_batch_size, shuffle=True, num_workers=20)

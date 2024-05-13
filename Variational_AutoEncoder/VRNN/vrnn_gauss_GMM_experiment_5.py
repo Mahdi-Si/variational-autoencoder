@@ -24,7 +24,7 @@ class VRNNGauss(VrnnGaussAbs):
                                         modify_z=None,
                                         modify_h=None,
                                         bias=False)
-
+        self.n_mixtures = 7
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, int(self.h_dim / 3)),
@@ -155,24 +155,29 @@ class VRNNGauss(VrnnGaussAbs):
         )
 
         self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(self.h_dim, int(2 * self.h_dim / 3) * self.n_mixtures),
+            nn.LayerNorm(int(2 * self.h_dim / 3) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(int(2 * self.h_dim / 3) * self.n_mixtures, int(self.h_dim / 2) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 2) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), self.input_dim)
+            nn.Linear(int(self.h_dim / 2) * self.n_mixtures, self.input_dim * self.n_mixtures)
         )
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(self.h_dim, int(2 * self.h_dim / 3) * self.n_mixtures),
+            nn.LayerNorm(int(2 * self.h_dim / 3) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(int(2 * self.h_dim / 3) * self.n_mixtures, int(self.h_dim / 2) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 2) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), self.input_dim),
+            nn.Linear(int(self.h_dim / 2) * self.n_mixtures, self.input_dim * self.n_mixtures),
             # nn.ReLU(),
             nn.Softplus(),
+        )
+
+        self.dec_pi = nn.Sequential(
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.Softmax(dim=1)
         )
 
         # recurrence function (f_theta) -> Recurrence
@@ -181,6 +186,7 @@ class VRNNGauss(VrnnGaussAbs):
 
     def forward(self, y):
         y, meta = self.scattering_transform(y)
+        batch_size = y.shape[1]
         scattering_original = y
         loss = torch.zeros(1, device=self.device, requires_grad=True)
         # initialization
@@ -235,9 +241,9 @@ class VRNNGauss(VrnnGaussAbs):
             phi_z_t = self.phi_z(z_t) + self.r_phi_z(z_t)
 
             dec_t = self.dec(phi_z_t) + self.r_dec(phi_z_t)
-            dec_mean_t = self.dec_mean(dec_t)
-            dec_logvar_t = self.dec_logvar(dec_t)
-            pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
+            dec_mean_t = self.dec_mean(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_logvar_t = self.dec_logvar(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            # pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
 
             # recurrence: y_t, z_t -> h_t+1
             # _, h = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), h)  # phi_h_t
@@ -248,10 +254,10 @@ class VRNNGauss(VrnnGaussAbs):
                 scale = self.modify_h.get('scale')
                 shift = self.modify_h.get('shift')
                 h = self._modify_h(h=h, modify_dims=modify_dims, scale=scale, shift=shift)
-
+            dec_pi_t = self.dec_pi(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
             # computing the loss
             KLD, kld_element = self.kld_gauss_(enc_mean_t, enc_logvar_t, prior_mean_t, prior_logvar_t)
-            loss_pred = torch.sum(pred_dist.log_prob(y[t]))
+            loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t, dec_logvar_t, dec_pi_t)
             loss = loss - loss_pred
             kld_loss = kld_loss + KLD
 
@@ -319,3 +325,19 @@ class VRNNGauss(VrnnGaussAbs):
             _, (h, c) = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), (h, c))
 
         return sample, sample_mu, sample_sigma
+
+    def loglikelihood_gmm(self, x, mu, logvar, pi):
+        loglike = 0
+        # for all data channels
+        for n in range(x.shape[1]):
+            # likelihood of a single mixture at evaluation point
+            pred_dist = tdist.Normal(mu[:, n, :], logvar[:, n, :].exp().sqrt())
+            x_mod = torch.mm(x[:, n].unsqueeze(1), torch.ones(1, self.n_mixtures, device=self.device))
+            like = pred_dist.log_prob(x_mod)
+            # weighting by probability of mixture and summing
+            temp = (pi[:, n, :] * like)
+            temp = temp.sum()
+            # log-likelihood added to previous log-likelihoods
+            loglike = loglike + temp
+
+        return loglike

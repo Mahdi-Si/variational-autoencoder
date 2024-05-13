@@ -82,7 +82,7 @@ def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(14, 16),
                            gridspec_kw={"width_ratios": [40, 1]})
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
+    ax[i_row, 0].plot(t_in, signal, linewidth=1.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
@@ -94,7 +94,7 @@ def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
             order_i = np.where(meta['order'] == order)
             x = Sx[:, order_i, :].squeeze()
             if order == 0:
-                ax[i_row, 0].plot(x.squeeze(), linewidth=0.5)
+                ax[i_row, 0].plot(x.squeeze(), linewidth=1.5)
                 ax[i_row, 1].set_axis_off()
             else:
                 imgplot = ax[i_row, 0].imshow(np.log(x + log_eps), aspect='auto',
@@ -124,7 +124,7 @@ def plot_scattering(signal=None, plot_order=None, Sx=None, meta=None,
             Sxr = Sxr.cpu().detach().numpy()
         Sxr = Sxr.transpose(1, 0)
 
-        ax[i_row, 0].plot(Sxr[0, :], linewidth=0.5)
+        ax[i_row, 0].plot(Sxr[0, :], linewidth=1.5)
         ax[i_row, 1].set_axis_off()
         ax[i_row, 0].autoscale(enable=True, axis='x reconstructed', tight=True)
         ax[i_row, 0].set_xticklabels([])
@@ -219,8 +219,8 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_se
         signal_2 = signal[:, 1]
     else:
         N_ROWS = 4 + (Sx.shape[0])
-        signal_1 = signal
         signal_2 = signal
+        signal_1 = signal
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
     plt.set_cmap(cmstr)
@@ -231,7 +231,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_se
     fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                            gridspec_kw={"width_ratios": [80, 1]})
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_in, signal_1, linewidth=0.5)
+    ax[i_row, 0].plot(t_in, signal_1, linewidth=1.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
@@ -239,7 +239,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_se
     if plot_second_channel:
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_in, signal_2, linewidth=0.5)
+        ax[i_row, 0].plot(t_in, signal_2, linewidth=1.5)
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel('UP')
@@ -273,8 +273,8 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_se
 
     for i in range(Sx.shape[0]):
         i_row += 1
-        ax[i_row, 0].plot(Sx[i, :], linewidth=1, label="True")
-        ax[i_row, 0].plot(Sxr[i, :], linewidth=0.9, label="Reconstructed")
+        ax[i_row, 0].plot(Sx[i, :], linewidth=1.5, label="True")
+        ax[i_row, 0].plot(Sxr[i, :], linewidth=1, label="Reconstructed")
         if Sxr_std is not None:
             ax[i_row, 0].fill_between(np.arange(len(Sxr_std[i, :])),
                                       Sxr[i, :] - Sxr_std[i, :],
@@ -325,10 +325,19 @@ def plot_loss_dict(loss_dict, epoch_num, plot_dir):
 
 def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_latent_mean=None, h_hidden_mean=None,
                           h_hidden_std=None, z_latent_std=None, kld_values=None, plot_dir=None, new_sample=None,
-                          plot_latent=False, plot_klds=False, plot_state=False, tag=''):
+                          plot_latent=False, plot_klds=False, plot_state=False, two_channel=False, tag=''):
     Fs = 4
     log_eps = 1e-3
-    N = len(signal)
+
+    if two_channel:
+        signal_1 = signal[:, 0]
+        signal_2 = signal[:, 1]
+    else:
+        signal_2 = signal
+        signal_1 = signal
+
+    N = len(signal_1)
+
     N_ROWS = 7 + (z_latent_mean.shape[0])
     t_in = np.arange(0, N) / Fs
     cmstr = 'Blues'
@@ -342,10 +351,14 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
 
     # plot true fhr
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(t_in, signal, linewidth=0.5)
+    ax[i_row, 0].plot(t_in, signal_1, linewidth=1.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('FHR (bpm)')
+    if two_channel:
+        ax2 = ax[i_row, 0].twinx()
+        ax2.plot(t_in, signal_2, linewidth=1.5, color="#c96b00")
+        ax2.set_ylabel('UP')
 
     # plot latent z difference
     i_row += 1
@@ -353,7 +366,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     z_diff_squared_sum = np.square(z_diff).sum(axis=0)
     # z_diff_sum = z_diff.sum(axis=0)
     ax[i_row, 1].set_axis_off()
-    ax[i_row, 0].plot(z_diff_squared_sum, linewidth=0.8)
+    ax[i_row, 0].plot(z_diff_squared_sum, linewidth=1.5)
     ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
     ax[i_row, 0].set_xticklabels([])
     ax[i_row, 0].set_ylabel('Latent Z difference')
@@ -406,7 +419,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
 
     for i in range(z_latent_mean.shape[0]):
         i_row += 1
-        ax[i_row, 0].plot(z_latent_mean[i, :], linewidth=1.9, label="Latent Representation")
+        ax[i_row, 0].plot(z_latent_mean[i, :], linewidth=1.5, label="Latent Representation")
         ax[i_row, 0].fill_between(np.arange(len(z_latent_mean[i, :])),
                                   z_latent_mean[i, :] - z_latent_std[i, :],
                                   z_latent_mean[i, :] + z_latent_std[i, :],
@@ -431,20 +444,24 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         # N_ROWS = 1 * z_latent_mean.shape[0] + z_latent_mean.shape[0] + 2
         fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                                gridspec_kw={"width_ratios": [60, 1]})
-        t_original = np.linspace(0, 1, len(signal))
+        t_original = np.linspace(0, 1, len(signal_1))
         t_reduced = np.linspace(0, 1, Sx.shape[1])
 
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
+        ax[i_row, 0].plot(t_original, signal_1, linewidth=1.5, color="#3D8361")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'FHR')
+        if two_channel:
+            ax2 = ax[i_row, 0].twinx()
+            ax2.plot(t_original, signal_2, linewidth=1.5, color="#135D66")
+            ax2.set_ylabel('UP')
         # for j in range(Sx.shape[0]):
         for i in range(z_latent_mean.shape[0]):
             i_row += 1
             ax[i_row, 1].set_axis_off()
             ax2 = ax[i_row, 0].twinx()
-            ax2.plot(t_original, signal, linewidth=1.5, color="#0C2D57")
+            ax2.plot(t_original, signal_1, linewidth=1, color="#0C2D57")
             marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*z_latent_mean[i, :], basefmt=" ")
             plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
             plt.setp(marker_line, 'color', "#387ADF")
@@ -454,7 +471,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
 
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(Sx[0, :], linewidth=0.5, color="#0C2D57")
+        ax[i_row, 0].plot(Sx[0, :], linewidth=1.5, color="#0C2D57")
         marker_line, stem_lines, baseline = ax[i_row, 0].stem(1*np.mean(z_latent_mean, axis=0), basefmt=" ")
         plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 2)
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
@@ -480,14 +497,18 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         N_ROWS = 1 * h_hidden_mean.shape[0] + h_hidden_mean.shape[0] * 1 + 2
         fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                                gridspec_kw={"width_ratios": [60, 1]})
-        t_original = np.linspace(0, 1, len(signal))
+        t_original = np.linspace(0, 1, len(signal_1))
         t_reduced = np.linspace(0, 1, Sx.shape[1])
 
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_original, signal, linewidth=2, color="#3D8361")
+        ax[i_row, 0].plot(t_original, signal_1, linewidth=1.5, color="#3D8361")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'FHR')
+        if two_channel:
+            ax2 = ax[i_row, 0].twinx()
+            ax2.plot(t_in, signal_2, linewidth=1.5, color="#135D66")
+            ax2.set_ylabel('UP')
         # for j in range(Sx.shape[0]):
         for i in range(h_hidden_mean.shape[0]):
             i_row += 1
@@ -496,7 +517,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
             # ax2.plot(t_reduced, Sx[0, :], linewidth=1, color="#0C2D57")
 
             ax3 = ax[i_row, 0].twinx()
-            ax3.plot(t_original, signal, linewidth=1, color="#3D8361")
+            ax3.plot(t_original, signal_1, linewidth=1.5, color="#3D8361")
 
             # marker_line, stem_lines, baseline = ax[i_row, 0].stem(t_reduced, 1*h_hidden_mean[i, :], basefmt=" ")
             # plt.setp(stem_lines, 'linewidth', 0)
@@ -515,9 +536,9 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         plt.setp(stem_lines, 'color', "#FC6736", 'linewidth', 0)
         plt.setp(marker_line, 'color', "#FC6736", 'marker', 'o', 'markersize', 8)
         ax2 = ax[i_row, 0].twinx()
-        ax2.plot(t_reduced, Sx[0, :], linewidth=1, color="#0C2D57")
+        ax2.plot(t_reduced, Sx[0, :], linewidth=1.5, color="#0C2D57")
         ax3 = ax[i_row, 0].twinx()
-        ax3.plot(t_original, signal, linewidth=1, color="#3D8361")
+        ax3.plot(t_original, signal_1, linewidth=1.5, color="#3D8361")
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel(f'Hidden Dim Averaged')
@@ -540,25 +561,25 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
                                gridspec_kw={"width_ratios": [60, 1]})
         t_1 = np.linspace(0, 10, kld_values.shape[1])
-        t_2 = np.linspace(0, 10, len(signal))
+        t_2 = np.linspace(0, 10, len(signal_1))
         i_row = -1
     # for j in range(Sx.shape[0]):
         for i in range(kld_values.shape[0]):
             i_row += 1
             ax[i_row, 1].set_axis_off()
-            ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=2, color="#0C2D57")
+            ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=1.5, color="#0C2D57")
 
             ax2 = ax[i_row, 0].twinx()
             ax3 = ax[i_row, 0].twinx()
-            ax2.plot(t_2, signal, linewidth=2, color="#FE7A36")
+            ax2.plot(t_2, signal_1, linewidth=1.5, color="#FE7A36")
             # ax3.plot(t_2, signal, linewidth=2, color="#0D9276")
             ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
             ax[i_row, 0].set_ylabel(f'KLD-Latent{i}')
         i_row += 1
         ax[i_row, 1].set_axis_off()
-        ax[i_row, 0].plot(t_1, np.sum(kld_values, axis=0), linewidth=2, color="#0C2D57")
+        ax[i_row, 0].plot(t_1, np.sum(kld_values, axis=0), linewidth=1.5, color="#0C2D57")
         ax3 = ax[i_row, 0].twinx()
-        ax3.plot(t_2, signal, linewidth=2)
+        ax3.plot(t_2, signal_1, linewidth=1.5)
 
         plt.savefig(plot_dir + '/' + tag + '_klds' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)
@@ -657,7 +678,7 @@ def plot_generated_samples(sx, sx_mean, sx_std, input_len, tag='_', plot_dir=Non
 
     for i in range(sx.shape[0]):
         i_row += 1
-        ax[i_row, 0].plot(sx_mean[i, :], linewidth=1, label="True")
+        ax[i_row, 0].plot(sx_mean[i, :], linewidth=1.25, label="True")
         if sx_std is not None:
             ax[i_row, 0].fill_between(np.arange(len(sx_std[i, :])),
                                       sx_mean[i, :] - sx_std[i, :],

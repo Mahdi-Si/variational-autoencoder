@@ -11,12 +11,12 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import numpy as np
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse, \
     plot_generated_samples
 
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_I_experiment_5 import VRNNGauss
+from vrnn_gauss_experiment_5 import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
 
@@ -29,8 +29,24 @@ else:
     device = torch.device('cpu')
 
 
+def calculate_log_likelihood(sample, sample_mu, sample_sigma):
+    # Assuming sample_mu and sample_sigma are the means and standard deviations of the distributions
+    # from which the samples were drawn. Note: sample_sigma should be standard deviations, not variances.
+
+    # Create a Normal distribution object with the mean and std from the generator
+    dist = torch.distributions.Normal(sample_mu, sample_sigma)
+
+    # Compute log probability of the generated sample under the generated distribution parameters
+    log_probs = dist.log_prob(sample)
+
+    # Sum the log probabilities over all dimensions and samples
+    total_log_likelihood = log_probs.sum()
+
+    return total_log_likelihood
+
+
 def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_selected=False,
-             modify_h=None, modify_z=None, base_dir=None, tag='_'):
+             modify_h=None, modify_z=None, base_dir=None, channel_num=1, tag='_'):
     model_t.modify_z = modify_z
     model_t.modify_h = modify_h
     model_t.to(device)
@@ -89,7 +105,7 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
 
                 epoch_data_collected.append(data_dict)
             if average_results:
-                tag = tag + 'repeated_and_averaged'
+                tag = tag + 'repeated_and_averaged_'
                 save_dir = os.path.join(base_dir, tag)
                 os.makedirs(save_dir, exist_ok=True)
                 selected_signal = batched_data_t[0]
@@ -101,7 +117,13 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
                 dec_mean_mean = torch.mean(dec_mean_t_, dim=0)
                 dec_mean_std = torch.mean(dec_std_t_, dim=0)
                 h_hidden = torch.mean(h_hidden_t__, dim=0)
-                plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                if channel_num == 1:
+                    signal_c = selected_signal.detach().cpu().numpy()  # for 1 channels
+                    two_channel_flag = False
+                else:
+                    signal_c = selected_signal.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for 2 channels
+                    two_channel_flag = True
+                plot_averaged_results(signal=signal_c, Sx=Sx.detach().cpu().numpy(),
                                       Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
                                       Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                       z_latent_mean=z_latent_mean.detach().cpu().numpy(),
@@ -109,11 +131,13 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
                                       kld_values=kld_values.detach().cpu().numpy(),
                                       h_hidden_mean=h_hidden.detach().cpu().numpy(),
                                       plot_latent=True,
+                                      two_channel=two_channel_flag,
                                       plot_klds=True,
                                       plot_state=False,
                                       # new_sample=new_sample.detach().cpu().numpy(),
                                       plot_dir=save_dir, tag=f'B_')
-                plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                plot_scattering_v2(signal=signal_c,
+                                   plot_second_channel=two_channel_flag,
                                    Sx=Sx.detach().cpu().numpy(), meta=None,
                                    Sxr=dec_mean_mean.detach().cpu().numpy(),
                                    Sxr_std=dec_mean_std.detach().cpu().numpy(),
@@ -122,10 +146,10 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
 
             else:
                 if plot_selected:
-                    tag = tag + 'selected_sequences'
+                    tag = tag + 'selected_sequences_'
                     save_dir = os.path.join(base_dir, tag)
                     os.makedirs(save_dir, exist_ok=True)
-                    selected_idx = [0, 1, 2, 3, 4]
+                    selected_idx = [0, 1, 2, 3, 4, 5, 6]
                     # selected_idx = np.arange(len(batched_data_t))
                     for idx in selected_idx:
                         selected_signal = batched_data_t[idx]
@@ -138,7 +162,13 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
                         dec_mean_mean = dec_mean_t_[idx]
                         dec_mean_std = dec_std_t_[idx]
                         h_hidden = h_hidden_t__[idx]
-                        plot_averaged_results(signal=selected_signal.detach().cpu().numpy(), Sx=Sx.detach().cpu().numpy(),
+                        if channel_num == 1:
+                            signal_c = selected_signal.detach().cpu().numpy()  # for 1 channel
+                            two_channel_flag = False
+                        else:
+                            signal_c = selected_signal.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for 2 channel
+                            two_channel_flag = True
+                        plot_averaged_results(signal=signal_c, Sx=Sx.detach().cpu().numpy(),
                                               Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
                                               Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                               z_latent_mean=z_latent_mean.detach().cpu().numpy(),
@@ -147,10 +177,12 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
                                               h_hidden_mean=h_hidden.detach().cpu().numpy(),
                                               plot_latent=True,
                                               plot_klds=True,
+                                              two_channel=two_channel_flag,
                                               plot_state=False,
                                               # new_sample=new_sample.detach().cpu().numpy(),
                                               plot_dir=save_dir, tag=f'B_{j}_{idx}_')
-                        plot_scattering_v2(signal=selected_signal.detach().cpu().numpy(),
+                        plot_scattering_v2(signal=signal_c,
+                                           plot_second_channel=two_channel_flag,
                                            Sx=Sx.detach().cpu().numpy(), meta=None,
                                            Sxr=dec_mean_mean.detach().cpu().numpy(),
                                            Sxr_std=dec_mean_std.detach().cpu().numpy(),
@@ -182,6 +214,8 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
     else:
         device = torch.device('cpu')
+    torch.manual_seed(42)
+    np.random.seed(42)
     now = datetime.now()
     run_date = now.strftime("%Y-%m-%d--[%H-%M]-")
     experiment_tag = config['general_config']['tag']
@@ -209,26 +243,6 @@ if __name__ == '__main__':
 
     print(yaml.dump(config, sort_keys=False, default_flow_style=False))
     print('==' * 50)
-    # Preparing training and testing datasets --------------------------------------------------------------------------
-    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
-    # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
-    # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
-    stat_path = os.path.normpath(config['dataset_config']['stat_path'])
-    batch_size = config['general_config']['batch_size']['train']
-    # batch_size = 2
-    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
-    fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
-    # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
-    data_loader_healthy = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
-    # data_loader_hie = DataLoader(fhr_aux_hie_dataset, batch_size=batch_size, shuffle=False)
-
-    with open(stat_path, 'rb') as f:
-        x_mean = np.load(f)
-        x_std = np.load(f)
-    log_stat = (x_mean, x_std)
-    # fhr_healthy_dataset = FHRDataset(healthy_list)
-    torch.manual_seed(42)
-    np.random.seed(42)
     # define model and train it ----------------------------------------------------------------------------------------
     raw_input_size = config['model_config']['VAE_model']['raw_input_size']
     input_size = config['model_config']['VAE_model']['input_size']
@@ -238,6 +252,9 @@ if __name__ == '__main__':
     rnn_hidden_dim = config['model_config']['VAE_model']['RNN_hidden_dim']
     epochs_num = config['general_config']['epochs']
     lr = config['general_config']['lr']
+    channel_num = config['general_config']['channel_num']
+    stat_path = os.path.normpath(config['dataset_config']['stat_path'])
+    batch_size = config['general_config']['batch_size']['train']
 
     # hyperparameters
     x_dim = input_dim
@@ -250,23 +267,43 @@ if __name__ == '__main__':
     # seed = 142
     print_every = 20  # batches
     save_every = 20  # epochs
-
     plt.ion()
+    # Preparing training and testing datasets --------------------------------------------------------------------------
+    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
+    # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
+    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
+    if channel_num == 1:
+        fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
+    else:
+        fhr_healthy_dataset = FhrUpPreload(dataset_dir)  # two channel dataset
+    # fhr_aux_hie_dataset = JsonDatasetPreload(aux_dataset_hie_dir)
+    data_loader_healthy = DataLoader(fhr_healthy_dataset, batch_size=batch_size, shuffle=False)
+    # data_loader_hie = DataLoader(fhr_aux_hie_dataset, batch_size=batch_size, shuffle=False)
+
+    with open(stat_path, 'rb') as f:
+        x_mean = np.load(f)
+        x_std = np.load(f)
+    log_stat = (x_mean, x_std)
+    # fhr_healthy_dataset = FHRDataset(healthy_list)
 
     # model = VRNN(x_len=raw_input_size, x_dim=x_dim, h_dim=h_dim, z_dim=z_dim, n_layers=n_layers, log_stat=log_stat)
+
+    # create the model and load the checkpoint -------------------------------------------------------------------------
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\layer-norm-h36-l9\VRNN-7912.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h96_l11\VRNN-5697.pth")
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-                           plot_selected=True, modify_z=None, base_dir=inference_results_dir, tag='test_1')
-    # columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
-    # columns.insert(0, 'Changed')
-    # df = pd.DataFrame(columns=columns)
+                           plot_selected=True, modify_z=None, base_dir=inference_results_dir, channel_num=channel_num,
+                           tag='General_test_')
+    columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
+    columns.insert(0, 'Changed')
+    df = pd.DataFrame(columns=columns)
     # df_2 = pd.DataFrame(columns=columns)
     # final_list = ["No Change"] + mse_average.cpu().tolist()
     # df.loc[len(df)] = final_list
@@ -282,7 +319,8 @@ if __name__ == '__main__':
     #     print('=='*50)
     #
     #     mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-    #                       modify_z=modify_z_dict, base_dir=inference_results_dir, tag=f'dim_{i}')
+    #                       modify_z=modify_z_dict, plot_selected=True, base_dir=inference_results_dir,
+    #                       channel_num=channel_num, tag=f'latent_dim_{i}_')
     #
     #     final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
     #     df.loc[len(df)] = final_list
@@ -304,15 +342,19 @@ if __name__ == '__main__':
     #     final_list = [f'Hidden_dim_{i}'] + mse_average.cpu().tolist()
     #     df_2.loc[len(df_2)] = final_list
     # df_2.to_csv((inference_results_dir + '/' + 'mse_losses_hidden_dims.csv'), index=False)
-    desired_index = 2  # example index
-    repeated_sample_dataset = RepeatSampleDataset(fhr_healthy_dataset, desired_index)
+    # repeated sample simulations --------------------------------------------------------------------------------------
+    for i in range(7):
+        desired_index = i  # example index
+        repeated_sample_dataset = RepeatSampleDataset(fhr_healthy_dataset, desired_index)
 
-    batch_size_repeated = 1000
-    dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
-    mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim, average_results=True,
-                                    modify_h=None, modify_z=None, base_dir=inference_results_dir, tag='repeated_data')
+        batch_size_repeated = 2000
+        dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
+        mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim,
+                                        average_results=True, modify_h=None, modify_z=None,
+                                        base_dir=inference_results_dir, channel_num=channel_num,
+                                        tag=f'repeated_data_{i}_')
 
-    g_samples, g_samples_mean, g_samples_sigma = model.generate(input_size=150, batch_size=100)
+    g_samples, g_samples_mean, g_samples_sigma = model.generate(input_size=150, batch_size=1000)
     g_samples = g_samples.permute(1, 2, 0)
     g_samples_mean = g_samples_mean.permute(1, 2, 0)
     g_samples_sigma = g_samples_sigma.permute(1, 2, 0)
@@ -324,4 +366,4 @@ if __name__ == '__main__':
         plot_generated_samples(sx=g_samples[k].detach().cpu().numpy(),
                                sx_mean=g_samples_mean[k].detach().cpu().numpy(),
                                sx_std=g_samples_sigma[k].detach().cpu().numpy(),
-                               input_len=input_size, tag=f'test_gen_{k}', plot_dir=save_dir_g)
+                               input_len=input_size, tag=f'test_gen_{k}_', plot_dir=save_dir_g)
