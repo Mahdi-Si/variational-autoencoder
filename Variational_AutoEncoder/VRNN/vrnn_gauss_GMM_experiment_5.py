@@ -24,7 +24,7 @@ class VRNNGauss(VrnnGaussAbs):
                                         modify_z=None,
                                         modify_h=None,
                                         bias=False)
-        self.n_mixtures = 7
+        self.n_mixtures = 5
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, int(self.h_dim / 3)),
@@ -92,6 +92,12 @@ class VRNNGauss(VrnnGaussAbs):
             nn.Softplus()
         )
 
+        self.r_prior_mean = nn.Linear(int(self.h_dim / 2), int(self.z_dim))
+        self.r_prior_logvar = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), int(self.z_dim)),
+            nn.Softplus()
+        )
+
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
             nn.Linear(2 * int(self.h_dim / 2), int(5 * self.h_dim / 6)),
@@ -109,28 +115,45 @@ class VRNNGauss(VrnnGaussAbs):
             nn.Linear(self.h_dim, int(self.h_dim / 2))
         )
         self.enc_mean = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
-            nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.LayerNorm(int(self.h_dim / 3)),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 12), self.z_dim)
+            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
+            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 4), self.z_dim),
+        )
+
+        self.r_enc_mean = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), self.z_dim)
         )
         self.enc_logvar = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
-            nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.LayerNorm(int(self.h_dim / 3)),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 12), self.z_dim),
-            # nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
+            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 4), self.z_dim),
             nn.Softplus(),
         )
 
+        self.r_enc_logvar = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), self.z_dim),
+            nn.Softplus()
+        )
+
         self.phi_z = nn.Sequential(
-            nn.Linear(self.z_dim, input_dim),
+            nn.Linear(self.z_dim, self.input_dim),
             nn.LayerNorm(input_dim),
             nn.ReLU(),
-            nn.Linear(input_dim, int(5 * self.h_dim / 12)),
-            nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.Linear(input_dim, int(self.h_dim / 5)),
+            nn.LayerNorm(int(self.h_dim / 5)),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
+            nn.Linear(int(self.h_dim / 5), int(self.h_dim / 3)),
+            nn.LayerNorm(int(self.h_dim / 3)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 2)),
         )
 
         self.r_phi_z = nn.Sequential(
@@ -155,31 +178,55 @@ class VRNNGauss(VrnnGaussAbs):
         )
 
         self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, int(2 * self.h_dim / 3) * self.n_mixtures),
-            nn.LayerNorm(int(2 * self.h_dim / 3) * self.n_mixtures),
+            nn.Linear(self.h_dim, int(self.h_dim / 6) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 6) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3) * self.n_mixtures, int(self.h_dim / 2) * self.n_mixtures),
-            nn.LayerNorm(int(self.h_dim / 2) * self.n_mixtures),
+            nn.Linear(int(self.h_dim / 6) * self.n_mixtures, int(self.h_dim / 7) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 7) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2) * self.n_mixtures, self.input_dim * self.n_mixtures)
+            nn.Linear(int(self.h_dim / 7) * self.n_mixtures, int(self.h_dim / 8) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 8) * self.n_mixtures),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 8) * self.n_mixtures, self.input_dim * self.n_mixtures)
         )
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, int(2 * self.h_dim / 3) * self.n_mixtures),
-            nn.LayerNorm(int(2 * self.h_dim / 3) * self.n_mixtures),
+            nn.Linear(self.h_dim, int(self.h_dim / 6) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 6) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3) * self.n_mixtures, int(self.h_dim / 2) * self.n_mixtures),
-            nn.LayerNorm(int(self.h_dim / 2) * self.n_mixtures),
+            nn.Linear(int(self.h_dim / 6) * self.n_mixtures, int(self.h_dim / 7) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 7) * self.n_mixtures),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2) * self.n_mixtures, self.input_dim * self.n_mixtures),
+            nn.Linear(int(self.h_dim / 7) * self.n_mixtures, int(self.h_dim / 8) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 8) * self.n_mixtures),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 8) * self.n_mixtures, self.input_dim * self.n_mixtures),
             # nn.ReLU(),
             nn.Softplus(),
         )
 
         self.dec_pi = nn.Sequential(
-            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.Linear(self.h_dim, int(self.h_dim / 6) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 6) * self.n_mixtures),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 6) * self.n_mixtures, int(self.h_dim / 7) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 7) * self.n_mixtures),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 7) * self.n_mixtures, int(self.h_dim / 8) * self.n_mixtures),
+            nn.LayerNorm(int(self.h_dim / 8) * self.n_mixtures),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 8) * self.n_mixtures, self.input_dim * self.n_mixtures),
             nn.Softmax(dim=1)
         )
 
+        self.r_dec_mean = nn.Linear(self.h_dim, self.input_dim * self.n_mixtures)
+        self.r_dec_logvar = nn.Sequential(
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.Softplus()
+        )
+        self.r_dec_pi = nn.Sequential(
+            nn.Linear(self.h_dim, self.input_dim * self.n_mixtures),
+            nn.Softmax(dim=1)
+        )
         # recurrence function (f_theta) -> Recurrence
         # self.rnn = nn.GRU(self.h_dim + self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
         self.rnn = nn.LSTM(self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
@@ -219,14 +266,14 @@ class VRNNGauss(VrnnGaussAbs):
             phi_h_t = self.phi_h(h[-1]) + self.r_phi_h(h[-1])
 
             prior_t = self.prior(h[-1]) + self.r_prior(h[-1])
-            prior_mean_t = self.prior_mean(prior_t)
-            prior_logvar_t = self.prior_logvar(prior_t)
+            prior_mean_t = self.prior_mean(prior_t) + self.r_prior_mean(prior_t)
+            prior_logvar_t = self.prior_logvar(prior_t) + self.r_prior_logvar(prior_t)
             # encoder: y_t, h_t -> z_t
             enc_t = (self.enc(torch.cat([phi_y_t, phi_h_t], 1)) +
                      self.r_enc(torch.cat([phi_y_t, phi_h_t], 1)))
 
-            enc_mean_t = self.enc_mean(enc_t)
-            enc_logvar_t = self.enc_logvar(enc_t)
+            enc_mean_t = self.enc_mean(enc_t) + self.r_enc_mean(enc_t)
+            enc_logvar_t = self.enc_logvar(enc_t) + self.r_enc_logvar(enc_t)
 
             # sampling and reparameterization: get a new z_t
             temp = tdist.Normal(enc_mean_t, enc_logvar_t.exp().sqrt())  # creates a normal distribution object
@@ -241,8 +288,10 @@ class VRNNGauss(VrnnGaussAbs):
             phi_z_t = self.phi_z(z_t) + self.r_phi_z(z_t)
 
             dec_t = self.dec(phi_z_t) + self.r_dec(phi_z_t)
-            dec_mean_t_gmm = self.dec_mean(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
-            dec_logvar_t_gmm = self.dec_logvar(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_mean_t_gmm = (self.dec_mean(dec_t) +
+                              self.r_dec_mean(dec_t)).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_logvar_t_gmm = (self.dec_logvar(dec_t) +
+                                self.r_dec_logvar(dec_t)).view(batch_size, self.input_dim, self.n_mixtures)
             # pred_dist = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
 
             # recurrence: y_t, z_t -> h_t+1
@@ -254,7 +303,8 @@ class VRNNGauss(VrnnGaussAbs):
                 scale = self.modify_h.get('scale')
                 shift = self.modify_h.get('shift')
                 h = self._modify_h(h=h, modify_dims=modify_dims, scale=scale, shift=shift)
-            dec_pi_t = self.dec_pi(dec_t).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_pi_t = (self.dec_pi(dec_t) +
+                        self.r_dec_pi(dec_t)).view(batch_size, self.input_dim, self.n_mixtures)
             # computing the loss
             KLD, kld_element = self.kld_gauss_(enc_mean_t, enc_logvar_t, prior_mean_t, prior_logvar_t)
             loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
@@ -262,13 +312,16 @@ class VRNNGauss(VrnnGaussAbs):
             kld_loss = kld_loss + KLD
 
             # GMM  ====================================================================
-            dec_mean_t = torch.sum(dec_pi_t * dec_mean_t_gmm, dim=2)
-            variances = torch.exp(dec_logvar_t_gmm)
-            mean_sq_plus_var = variances + dec_mean_t_gmm ** 2
-            weighted_variances = torch.sum(dec_pi_t * mean_sq_plus_var, dim=2)
-            mean_final_sq = dec_mean_t ** 2
-            dec_logvar_t = weighted_variances - mean_final_sq
-            dec_logvar_t = torch.log(dec_logvar_t)
+            # dec_mean_t = torch.sum(dec_pi_t * dec_mean_t_gmm, dim=2)
+            # variances = torch.exp(dec_logvar_t_gmm)
+            # mean_sq_plus_var = variances + dec_mean_t_gmm ** 2
+            # weighted_variances = torch.sum(dec_pi_t * mean_sq_plus_var, dim=2)
+            # mean_final_sq = dec_mean_t ** 2
+            # dec_logvar_t = weighted_variances - mean_final_sq
+            # dec_logvar_t = torch.log(dec_logvar_t)
+            sample_t, dec_mean_t, dec_logvar_t = self._reparameterized_sample_gmm(dec_mean_t_gmm,
+                                                                                  dec_logvar_t_gmm,
+                                                                                  dec_pi_t)
             # end   ====================================================================
 
 
@@ -352,3 +405,23 @@ class VRNNGauss(VrnnGaussAbs):
             loglike = loglike + temp
 
         return loglike
+
+    def _reparameterized_sample_gmm(self, mu, logvar, pi):
+        # select the mixture indices
+        alpha = torch.distributions.Categorical(pi).sample()
+
+        # select the mixture indices
+        idx = logvar.shape[-1]
+        raveled_index = torch.arange(len(alpha.flatten()), device=self.device) * idx + alpha.flatten()
+        logvar_sel = logvar.flatten()[raveled_index]
+        mu_sel = mu.flatten()[raveled_index]
+
+        # get correct dimensions
+        logvar_sel = logvar_sel.view(logvar.shape[:-1])
+        mu_sel = mu_sel.view(mu.shape[:-1])
+
+        # resample
+        temp = tdist.Normal(mu_sel, logvar_sel.exp().sqrt())
+        sample = tdist.Normal.rsample(temp)
+
+        return sample, mu_sel, logvar_sel.exp().sqrt()

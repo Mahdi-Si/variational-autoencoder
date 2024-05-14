@@ -16,7 +16,7 @@ from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_av
     plot_generated_samples
 
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_experiment_5 import VRNNGauss
+from vrnn_gauss_GMM_experiment_5 import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
 
@@ -269,10 +269,10 @@ if __name__ == '__main__':
     save_every = 20  # epochs
     plt.ion()
     # Preparing training and testing datasets --------------------------------------------------------------------------
-    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
     # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
-    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
+    # dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
     if channel_num == 1:
         fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     else:
@@ -293,7 +293,7 @@ if __name__ == '__main__':
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h96_l11\VRNN-5697.pth")
+    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\GMM\VRNN-27.pth")
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
