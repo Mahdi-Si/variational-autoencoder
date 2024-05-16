@@ -9,16 +9,18 @@ from datetime import datetime
 import sys
 from tqdm import tqdm
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
+from torch.utils.data import Dataset, DataLoader, random_split
+import torch.distributions as tdist
 import numpy as np
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse, \
-    plot_generated_samples
-
+    plot_generated_samples, plot_distributions
+import seaborn as sns
 # from vrnn_gauss import VRNN_Gauss
 from vrnn_gauss_experiment_5_old import VRNNGauss
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
 import pandas as pd
+import plotly.graph_objects as go
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # remove this line when creating a new environment
 
@@ -29,21 +31,29 @@ else:
     device = torch.device('cpu')
 
 
-def calculate_log_likelihood(sample, sample_mu, sample_sigma):
-    # Assuming sample_mu and sample_sigma are the means and standard deviations of the distributions
-    # from which the samples were drawn. Note: sample_sigma should be standard deviations, not variances.
+# def calculate_log_likelihood_generated(sample, sample_mu, sample_sigma):
+#     dist = torch.distributions.Normal(sample_mu, sample_sigma)
+#     log_probs = dist.log_prob(sample)
+#     total_log_likelihood = log_probs.sum()
+#     return total_log_likelihood
 
-    # Create a Normal distribution object with the mean and std from the generator
-    dist = torch.distributions.Normal(sample_mu, sample_sigma)
+def calculate_log_likelihood_generated(samples, mean, sigma):
+    dist = torch.distributions.Normal(mean, sigma)
+    log_likelihood = dist.log_prob(samples)
+    return log_likelihood
 
-    # Compute log probability of the generated sample under the generated distribution parameters
-    log_probs = dist.log_prob(sample)
 
-    # Sum the log probabilities over all dimensions and samples
-    total_log_likelihood = log_probs.sum()
-
-    return total_log_likelihood
-
+def calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_):
+    # Ensure the inputs are in the correct shape and on the correct device
+    dec_mean_t_ = dec_mean_t_.to(Sx_t_.device)
+    dec_std_t_ = dec_std_t_.to(Sx_t_.device)
+    # Create a normal distribution with the predicted mean and std
+    pred_dist = tdist.Normal(dec_mean_t_, dec_std_t_)
+    # Compute the log probability of the original signal under this distribution
+    log_probs = pred_dist.log_prob(Sx_t_)
+    # Sum the log probabilities over the input dimensions and sequence length
+    log_likelihoods = log_probs.sum(dim=[1, 2])
+    return log_likelihoods.cpu().numpy()
 
 def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_selected=False,
              modify_h=None, modify_z=None, base_dir=None, channel_num=1, tag='_'):
@@ -54,6 +64,9 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
     mse_all_data = torch.empty((0, input_dim_t)).to(device)
     collected_data = []
     epoch_data_collected = []
+    log_likelihood_all_data = []
+    all_st = []
+    all_guids = []
     with torch.no_grad():
         for j, complete_batched_data_t in tqdm(enumerate(data_loader), total=len(data_loader)):
             batched_data_t = complete_batched_data_t[0]
@@ -83,7 +96,10 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
             average_values = torch.mean(h_hidden_t__, dim=2)
             std_values = torch.std(h_hidden_t__, dim=2)
             diff_values = torch.diff(h_hidden_t__, dim=2)
-
+            log_likelihoods = calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_)
+            log_likelihood_all_data.extend(log_likelihoods)
+            all_st.append(Sx_t_)
+            all_guids.extend(guids)
             batch_results = zip(guids, epochs_nums, mse_coefficients.cpu().numpy(),
                                 max_values.values.cpu().numpy(),
                                 min_values.values.cpu().numpy(),
@@ -143,56 +159,113 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
                                    Sxr_std=dec_mean_std.detach().cpu().numpy(),
                                    z_latent=z_latent_mean.detach().cpu().numpy(),
                                    plot_dir=save_dir, tag=f'B_')
-
-            else:
-                if plot_selected:
-                    tag = tag + 'selected_sequences_'
-                    save_dir = os.path.join(base_dir, tag)
-                    os.makedirs(save_dir, exist_ok=True)
-                    selected_idx = [0, 1, 2, 3, 4, 5, 6, 7, 8]
-                    # selected_idx = np.arange(len(batched_data_t))
-                    for idx in selected_idx:
-                        selected_signal = batched_data_t[idx]
-                        guid_selected = guids[idx]
-                        Sx = Sx_t_[idx]  # might need to permute (1, 0)
-                        z_latent = z_latent_t_[idx]
-                        # z_latent = h_hidden__[idx]
-                        z_latent_mean = z_latent
-                        z_latent_std = enc_std_t_[idx]
-                        kld_values = kld_values_t_[idx]
-                        dec_mean_mean = dec_mean_t_[idx]
-                        dec_mean_std = dec_std_t_[idx]
-                        h_hidden = h_hidden_t__[idx]
-                        if channel_num == 1:
-                            signal_c = selected_signal.detach().cpu().numpy()  # for 1 channel
-                            two_channel_flag = False
-                        else:
-                            signal_c = selected_signal.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for 2 channel
-                            two_channel_flag = True
-                        plot_averaged_results(signal=signal_c, Sx=Sx.detach().cpu().numpy(),
-                                              Sxr_mean=dec_mean_mean.detach().cpu().numpy(),
-                                              Sxr_std=dec_mean_std.detach().cpu().numpy(),
-                                              z_latent_mean=z_latent_mean.detach().cpu().numpy(),
-                                              z_latent_std=z_latent_std.detach().cpu().numpy(),
-                                              kld_values=kld_values.detach().cpu().numpy(),
-                                              h_hidden_mean=h_hidden.detach().cpu().numpy(),
-                                              plot_latent=True,
-                                              plot_klds=True,
-                                              two_channel=two_channel_flag,
-                                              plot_state=False,
-                                              # new_sample=new_sample.detach().cpu().numpy(),
-                                              plot_dir=save_dir, tag=f'{guid_selected}_{j}_{idx}_')
-                        plot_scattering_v2(signal=signal_c,
-                                           plot_second_channel=two_channel_flag,
-                                           Sx=Sx.detach().cpu().numpy(), meta=None,
-                                           Sxr=dec_mean_mean.detach().cpu().numpy(),
-                                           Sxr_std=dec_mean_std.detach().cpu().numpy(),
-                                           z_latent=z_latent_mean.detach().cpu().numpy(),
-                                           plot_dir=save_dir, tag=f'{guid_selected}_{j}_{idx}_')
+        print('stop')
+        all_st_tensor = torch.cat(all_st, dim=0)
+        all_st_mean = all_st_tensor.mean(dim=0)
+        all_st_std = all_st_tensor.std(dim=0)
+        tag_hist = tag + 'loglikelihood_'
+        save_dir_hist = os.path.join(base_dir, tag_hist)
+        os.makedirs(save_dir_hist, exist_ok=True)
+        plot_distributions(sx_mean=all_st_mean.detach().cpu().numpy(), sx_std=all_st_std.detach().cpu().numpy(),
+                           plot_second_channel=False, plot_sample=False,
+                           plot_dir=save_dir_hist, plot_dataset_average=True, tag='_all_dataset')
         # mse_all_data (dataset_size, input_dim)
         # plot_general_mse(all_mse=mse_all_data.permute(1, 0).detach().cpu().numpy(),
         #                  tag=f'mses_{tag}',
         #                  plot_dir=base_dir)
+
+        data = np.array(log_likelihood_all_data)
+        # =======================================================================================
+        fig, ax = plt.subplots(figsize=(32, 6))
+        hist, bin_edges = np.histogram(data, bins=160)
+        ax.hist(data, bins=160, color='royalblue', alpha=0.99, edgecolor='black')
+        # ax.plot(data, np.full_like(data, -0.01), '|', color='black', alpha=0.1, markersize=10)
+        ax.set_xlabel('Value', fontsize=14)
+        ax.set_ylabel('Frequency', fontsize=14)
+        ax.set_title('Distribution of Data with Histogram', fontsize=16)
+        ax.grid(True, linewidth=0.1)  # Reduce the grid line thickness
+        mean = np.mean(data)
+        median = np.median(data)
+        # ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.2f}')
+        # ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.2f}')
+        ax.legend()
+        plt.savefig(save_dir_hist + '/' + 'loglikelihood' + '_distribution' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.close(fig)
+        # =======================================================================================
+
+        bin_indices = np.digitize(data, bin_edges) - 1
+        bin_indices = np.clip(bin_indices, 0, len(bin_edges) - 2)
+        bins_dict = {i: [] for i in range(len(bin_edges) - 1)}
+        for guid, bin_index in zip(all_guids, bin_indices):
+            bins_dict[bin_index].append(guid)
+        mean_ll = np.mean(data)
+        std_ll = np.std(data)
+        anomalies = [(guid, ll) for guid, ll in zip(all_guids, data) if abs(ll - mean_ll) > 5 * std_ll]
+        # Print anomalies
+        print("Anomalies:")
+        for guid, ll in anomalies:
+            print(f"GUID: {guid}, Log-Likelihood: {ll}")
+
+        # plotly for histogram =========================================================================================
+        fig = go.Figure()
+        fig = go.Figure()
+
+        # Add histogram
+        fig.add_trace(go.Histogram(
+            x=data,
+            nbinsx=160,
+            marker=dict(color='royalblue'),
+            opacity=0.75,
+            name='Log-Likelihood'
+        ))
+
+        # Prepare hover text
+        hover_text = []
+        for bin_start, bin_end, bin_index in zip(bin_edges[:-1], bin_edges[1:], range(len(bin_edges) - 1)):
+            guids_in_bin = bins_dict[bin_index]
+            if len(guids_in_bin) > 10:
+                hover_text.append(
+                    f"Bin {bin_index}: {bin_start:.2f} to {bin_end:.2f}<br>GUIDs: {', '.join(guids_in_bin[:10])}... and {len(guids_in_bin) - 10} more"
+                )
+            else:
+                hover_text.append(
+                    f"Bin {bin_index}: {bin_start:.2f} to {bin_end:.2f}<br>GUIDs: {', '.join(guids_in_bin)}"
+                )
+
+        # Add hover text to the bins
+        bin_edges_midpoints = (bin_edges[:-1] + bin_edges[1:]) / 2
+        hover_labels = ['' for _ in range(len(bin_edges) - 1)]
+        for i, text in enumerate(hover_text):
+            hover_labels[i] = text
+
+        # Custom hovertemplate
+        hovertemplate = "%{x}<br>%{y}<br>%{customdata}<extra></extra>"
+
+        fig.data[0].update(
+            customdata=hover_labels,
+            hovertemplate=hovertemplate
+        )
+
+        # Add mean and median lines
+        mean = np.mean(data)
+        median = np.median(data)
+        fig.add_vline(x=mean, line=dict(color='red', width=1, dash='dash'), annotation_text=f'Mean: {mean:.2f}',
+                      annotation_position="top left")
+        fig.add_vline(x=median, line=dict(color='green', width=1, dash='dash'), annotation_text=f'Median: {median:.2f}',
+                      annotation_position="top left")
+
+        # Update layout
+        fig.update_layout(
+            title='Distribution of Log-Likelihoods with Histogram',
+            xaxis_title='Log-Likelihood',
+            yaxis_title='Frequency',
+            bargap=0.1,
+            hovermode='x'
+        )
+        save_path_html = os.path.join(os.path.abspath(save_dir_hist), 'loglikelihood_distribution.html')
+        fig.write_html(save_path_html)
+        # fig.write_html(save_dir_hist + '/' + 'loglikelihood_distribution.html')
+        # ==============================================================================================================
         mse_average = mse_all_data.mean(dim=0)
         print('==' * 50)
         print(f'MSE each dim: {mse_average}')
@@ -202,7 +275,7 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
         df_pre.to_csv(f'{base_dir}/{tag}.csv')
         df_all_data = pd.DataFrame(epoch_data_collected)
         df_all_data.to_csv(f'{base_dir}/{tag}_all_data.csv')
-        return mse_average
+        return all_st_mean, all_st_std
 
 
 if __name__ == '__main__':
@@ -270,10 +343,10 @@ if __name__ == '__main__':
     save_every = 20  # epochs
     plt.ion()
     # Preparing training and testing datasets --------------------------------------------------------------------------
-    # dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
+    dataset_dir = os.path.normpath(config['dataset_config']['dataset_dir'])
     # dataset_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
     # aux_dataset_hie_dir = os.path.normpath(config['dataset_config']['aux_dataset_dir'])
-    dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
+    # dataset_dir = r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason"
     if channel_num == 1:
         fhr_healthy_dataset = JsonDatasetPreload(dataset_dir)
     else:
@@ -299,61 +372,12 @@ if __name__ == '__main__':
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
-    mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-                           plot_selected=True, modify_z=None, base_dir=inference_results_dir, channel_num=channel_num,
-                           tag='General_test_')
+    all_st_mean, all_st_std = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim,
+                                       modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
+                                       channel_num=channel_num, tag='General_test_')
     columns = [f'St_coefficient_{i}' for i in range(0, input_dim)]
     columns.insert(0, 'Changed')
     df = pd.DataFrame(columns=columns)
-    # df_2 = pd.DataFrame(columns=columns)
-    # final_list = ["No Change"] + mse_average.cpu().tolist()
-    # df.loc[len(df)] = final_list
-    # df_2.loc[len(df_2)] = final_list
-    # for i in range(latent_dim):
-    #     modify_dims_z = list(range(0, latent_dim))
-    #     scale = [int(x) for x in np.ones(latent_dim)]
-    #     # scale = np.ones(latent_dim).astype(int).tolist()
-    #     scale[i] = int(10)
-    #     shift = [int(x) for x in np.zeros(latent_dim)]
-    #     modify_z_dict = {'modify_dims': modify_dims_z, 'scale': scale, 'shift': shift}
-    #     print(f'modified z {i}: \n {modify_z_dict}')
-    #     print('=='*50)
-    #
-    #     mse_er = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_h=None,
-    #                       modify_z=modify_z_dict, plot_selected=True, base_dir=inference_results_dir,
-    #                       channel_num=channel_num, tag=f'latent_dim_{i}_')
-    #
-    #     final_list = [f'Latent_dim_{i}'] + mse_er.cpu().tolist()
-    #     df.loc[len(df)] = final_list
-    #
-    # df.to_csv((inference_results_dir + '/' + 'mse_losses_latent_dims.csv'), index=False)
-
-    #
-    # for i in range(0, rnn_hidden_dim):
-    #     modify_dims_h = [int(i)]
-    #     scale = [int(0)]
-    #     shift = [int(0)]
-    #     modify_h_dict = {'modify_dims': modify_dims_h, 'scale': scale, 'shift': shift}
-    #     print(f'modified z {i}: \n {modify_h_dict}')
-    #     print('=='*50)
-    #
-    #     mse_average = run_test(model_t=model, data_loader=data_loader_healthy, input_dim_t=input_dim, modify_z=None,
-    #                            modify_h=modify_h_dict,
-    #                            base_dir=inference_results_dir, tag=f'hidden_{i}')
-    #     final_list = [f'Hidden_dim_{i}'] + mse_average.cpu().tolist()
-    #     df_2.loc[len(df_2)] = final_list
-    # df_2.to_csv((inference_results_dir + '/' + 'mse_losses_hidden_dims.csv'), index=False)
-    # repeated sample simulations --------------------------------------------------------------------------------------
-    for i in range(7):
-        desired_index = i  # example index
-        repeated_sample_dataset = RepeatSampleDataset(fhr_healthy_dataset, desired_index)
-
-        batch_size_repeated = 2000
-        dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
-        mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim,
-                                        average_results=True, modify_h=None, modify_z=None,
-                                        base_dir=inference_results_dir, channel_num=channel_num,
-                                        tag=f'repeated_data_{i}_')
 
     g_samples, g_samples_mean, g_samples_sigma = model.generate(input_size=150, batch_size=1000)
     g_samples = g_samples.permute(1, 2, 0)
@@ -364,7 +388,31 @@ if __name__ == '__main__':
     os.makedirs(save_dir_g, exist_ok=True)
     selected_idx = np.random.randint(0, 100, 5)
     for k in selected_idx:
+        plot_distributions(sx_mean=all_st_mean.detach().cpu().numpy(), sx_std=all_st_std.detach().cpu().numpy(),
+                           plot_dir=save_dir_g, plot_sample=True,
+                           sample_sx_mean=g_samples_mean[k].detach().cpu().numpy(), tag=f'_{k}_sample')
         plot_generated_samples(sx=g_samples[k].detach().cpu().numpy(),
                                sx_mean=g_samples_mean[k].detach().cpu().numpy(),
                                sx_std=g_samples_sigma[k].detach().cpu().numpy(),
                                input_len=input_size, tag=f'test_gen_{k}_', plot_dir=save_dir_g)
+
+    # # for m in
+    # all_sample_loglikelihood = []
+    # for m in range(g_samples.shap[0]):
+    #     calculate_log_likelihood_generated(g_samples, g_samples_mean, g_samples_sigma)
+    #
+    # fig, ax = plt.subplots(figsize=(32, 6))
+    # ax.hist(data, bins=160, color='royalblue', alpha=0.99, edgecolor='black')
+    # # ax.plot(data, np.full_like(data, -0.01), '|', color='black', alpha=0.1, markersize=10)
+    # ax.set_xlabel('Value', fontsize=14)
+    # ax.set_ylabel('Frequency', fontsize=14)
+    # ax.set_title('Distribution of Data with Histogram', fontsize=16)
+    # ax.grid(True, linewidth=0.1)  # Reduce the grid line thickness
+    # mean = np.mean(data)
+    # median = np.median(data)
+    # # ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.2f}')
+    # # ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.2f}')
+    # ax.legend()
+    # plt.savefig(save_dir_g + '/' + 'loglikelihood' + '_distribution' + '.pdf', bbox_inches='tight',
+    #             orientation='landscape', dpi=50)
+    # plt.close(fig)

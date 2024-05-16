@@ -51,8 +51,8 @@ class JsonDatasetPreload(Dataset):
         sample_data = self.samples[idx]
         fhr = torch.tensor(sample_data['fhr'])
         up = torch.tensor(sample_data['up'])
-        guid = sample_data['GUID']
-        epoch_num = sample_data['domain_starts']/600
+        epoch_num = sample_data['domain_starts'] / 600
+        guid = sample_data['GUID'] + str(sample_data['domain_starts'])
         target = torch.tensor(sample_data['target'])
         sample_weight = torch.tensor(sample_data['sample_weights'])
         # return fhr, target, sample_weight
@@ -77,7 +77,7 @@ class FhrUpPreload(Dataset):
         sample_data = self.samples[idx]
         fhr = torch.tensor(sample_data['fhr'])
         up = torch.tensor(sample_data['up'])
-        guid = sample_data['GUID']
+        guid = sample_data['GUID'] + str(sample_data['domain_starts'])
         epoch_num = sample_data['domain_starts']/600
         target = torch.tensor(sample_data['target'])
         sample_weight = torch.tensor(sample_data['sample_weights'])

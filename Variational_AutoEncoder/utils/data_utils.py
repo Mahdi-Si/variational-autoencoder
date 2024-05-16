@@ -696,3 +696,66 @@ def plot_generated_samples(sx, sx_mean, sx_std, input_len, tag='_', plot_dir=Non
     #             orientation='landscape')
     plt.savefig(plot_dir + '/' + tag + '_' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
+
+
+def plot_distributions(sx_mean=None, sx_std=None, plot_second_channel=False, plot_sample=False, plot_dir=None,
+                       plot_dataset_average=False, sample_sx=None, sample_sx_mean=None, sample_sx_std=None, tag=''):
+    Fs = 4
+    log_eps = 1e-3
+    # N = sx_mean.shape[0]
+    # if Sxr is not None:
+    N_ROWS = sx_mean.shape[0]
+    #     # N_ROWS = 3
+    #     N_ROWS = len(plot_order) + 4
+    # else:
+    #     # N_ROWS = 2
+    #     N_ROWS = len(plot_order) + 1
+    # if plot_second_channel:
+    #     N_ROWS = 5 + (sx.shape[0])
+    #     signal_1 = signal[:, 0]
+    #     signal_2 = signal[:, 1]
+    # else:
+    #     N_ROWS = 4 + (Sx.shape[0])
+    #     signal_2 = signal
+    #     signal_1 = signal
+    # t_in = np.arange(0, N) / Fs
+    cmstr = 'Blues'
+    plt.set_cmap(cmstr)
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+
+    if plot_dataset_average:
+        i_row = -1
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                               gridspec_kw={"width_ratios": [80, 1]})
+        for i in range(sx_mean.shape[0]):
+            i_row += 1
+            ax[i_row, 0].plot(sx_mean[i, :], linewidth=1.5, label=f"st_{i}")
+            ax[i_row, 0].fill_between(np.arange(len(sx_mean[i, :])),
+                                      sx_mean[i, :] - sx_std[i, :],
+                                      sx_mean[i, :] + sx_std[i, :],
+                                      color='blue', alpha=0.25, label='Std dev')
+            ax[i_row, 0].legend()
+            ax[i_row, 1].set_axis_off()
+            ax[i_row, 0].set_ylabel(f'St-Coefficient-{i}')
+        plt.savefig(plot_dir + '/' + tag + '_dataset' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.close(fig)
+
+    if plot_sample:
+        N_ROWS = sx_mean.shape[0]
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=2, figsize=(25, N_ROWS * 5 + 10),
+                               gridspec_kw={"width_ratios": [80, 1]})
+        i_row = -1
+        for i in range(sx_mean.shape[0]):
+            i_row += 1
+            ax[i_row, 0].plot(sx_mean[i, :], linewidth=1.5, linestyle=(0, (5, 1)), label=f"st_{i}")
+            ax[i_row, 0].fill_between(np.arange(len(sx_mean[i, :])),
+                                      sx_mean[i, :] - sx_std[i, :],
+                                      sx_mean[i, :] + sx_std[i, :],
+                                      color='blue', alpha=0.19, label='Std dev')
+            ax[i_row, 0].plot(sample_sx_mean[i, :], linewidth=2, color='black')
+            ax[i_row, 0].legend()
+            ax[i_row, 1].set_axis_off()
+            ax[i_row, 0].set_ylabel(f'St-Coefficient-{i}')
+
+        plt.savefig(plot_dir + '/' + tag + '_sample' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.close(fig)

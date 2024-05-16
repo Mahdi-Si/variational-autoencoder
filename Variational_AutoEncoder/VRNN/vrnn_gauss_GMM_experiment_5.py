@@ -24,7 +24,7 @@ class VRNNGauss(VrnnGaussAbs):
                                         modify_z=None,
                                         modify_h=None,
                                         bias=False)
-        self.n_mixtures = 5
+        self.n_mixtures = 11
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, int(self.h_dim / 3)),
@@ -319,9 +319,11 @@ class VRNNGauss(VrnnGaussAbs):
             # mean_final_sq = dec_mean_t ** 2
             # dec_logvar_t = weighted_variances - mean_final_sq
             # dec_logvar_t = torch.log(dec_logvar_t)
-            sample_t, dec_mean_t, dec_logvar_t = self._reparameterized_sample_gmm(dec_mean_t_gmm,
-                                                                                  dec_logvar_t_gmm,
-                                                                                  dec_pi_t)
+            # sample_t, dec_mean_t, dec_logvar_t = self._reparameterized_sample_gmm(dec_mean_t_gmm,
+            #                                                                       dec_logvar_t_gmm,
+            #                                                                       dec_pi_t)
+            dec_mean_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
+            dec_logvar_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
             # end   ====================================================================
 
 
@@ -425,3 +427,33 @@ class VRNNGauss(VrnnGaussAbs):
         sample = tdist.Normal.rsample(temp)
 
         return sample, mu_sel, logvar_sel.exp().sqrt()
+
+    def reconstruct(self, dec_mean, dec_logvar, dec_pi):
+        """
+        Reconstruct the input signal from the decoder outputs.
+
+        Parameters:
+        dec_mean (torch.Tensor): Mean values for the GMM components (batch_size, input_dim, n_mixtures)
+        dec_logvar (torch.Tensor): Log variance values for the GMM components (batch_size, input_dim, n_mixtures)
+        dec_pi (torch.Tensor): Mixture coefficients for the GMM components (batch_size, input_dim, n_mixtures)
+
+        Returns:
+        torch.Tensor: Reconstructed signal (batch_size, input_dim)
+        """
+        # Convert log variances to standard deviations
+        dec_std = torch.exp(0.5 * dec_logvar)
+
+        # Sample from each mixture component
+        samples = []
+        for k in range(self.n_mixtures):
+            dist = tdist.Normal(dec_mean[:, :, k], dec_std[:, :, k])
+            sample = dist.rsample()
+            samples.append(sample)
+
+        # Stack the samples along a new dimension
+        samples = torch.stack(samples, dim=-1)
+
+        # Weight the samples by the mixture coefficients and sum them
+        reconstructed_signal = torch.sum(dec_pi * samples, dim=-1)
+
+        return reconstructed_signal

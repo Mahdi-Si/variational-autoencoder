@@ -157,6 +157,7 @@ class VRNNGauss(VrnnGaussAbs):
         all_h = []
         all_z_t = []
         all_kld = []
+        all_nll = []
         kld_loss = 0
 
         # prior_mean_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
@@ -220,6 +221,7 @@ class VRNNGauss(VrnnGaussAbs):
             all_dec_mean.append(dec_mean_t)
             all_dec_std.append(dec_logvar_t)
             all_z_t.append(z_t)
+            all_nll.append(loss_pred)
 
         results = VrnnForward(
             rec_loss=loss,  # (1,)

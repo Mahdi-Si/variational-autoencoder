@@ -28,11 +28,11 @@ class VRNNGauss(VrnnGaussAbs):
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, int(self.h_dim / 3)),
-            nn.ReLU(),
             nn.LayerNorm(int(self.h_dim / 3)),
-            nn.Linear(int(self.h_dim / 3), int(5 * self.h_dim / 12)),
             nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(5 * self.h_dim / 12)),
             nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.ReLU(),
             nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
 
         )
@@ -41,29 +41,62 @@ class VRNNGauss(VrnnGaussAbs):
 
         self.phi_h = nn.Sequential(
             nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.ReLU(),
             nn.LayerNorm(int(5 * self.h_dim / 6)),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
             nn.ReLU(),
+            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
             nn.LayerNorm(int(2 * self.h_dim / 3)),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2))
+            nn.ReLU(),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.ReLU(),
         )
 
         self.r_phi_h = nn.Sequential(
             nn.Linear(self.h_dim, int(self.h_dim / 2))
         )
 
+        self.prior = nn.Sequential(
+            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
+            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.ReLU(),
+            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
+            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.ReLU(),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.ReLU(),
+        )
+
+        self.r_prior = nn.Sequential(
+            nn.Linear(self.h_dim, int(self.h_dim / 2))
+        )
+
+        self.prior_mean = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.LayerNorm(int(self.h_dim / 3)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(self.z_dim)),
+        )
+
+        self.prior_logvar = nn.Sequential(
+            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.LayerNorm(int(self.h_dim / 3)),
+            nn.ReLU(),
+            nn.Linear(int(self.h_dim / 3), int(self.z_dim)),
+            nn.Softplus()
+        )
+
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
             nn.Linear(2 * int(self.h_dim / 2), int(5 * self.h_dim / 6)),
-            nn.ReLU(),
             nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.ReLU(),
             nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.ReLU(),
             nn.LayerNorm(int(2 * self.h_dim / 3)),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.ReLU(),
-            nn.LayerNorm(int(self.h_dim / 2))
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
+            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.ReLU(),
         )
 
         self.r_enc = nn.Sequential(
@@ -71,14 +104,14 @@ class VRNNGauss(VrnnGaussAbs):
         )
         self.enc_mean = nn.Sequential(
             nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
-            nn.ReLU(),
             nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.ReLU(),
             nn.Linear(int(5 * self.h_dim / 12), self.z_dim)
         )
         self.enc_logvar = nn.Sequential(
             nn.Linear(int(self.h_dim / 2), int(5 * self.h_dim / 12)),
-            nn.ReLU(),
             nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.ReLU(),
             nn.Linear(int(5 * self.h_dim / 12), self.z_dim),
             # nn.ReLU(),
             nn.Softplus(),
@@ -86,11 +119,11 @@ class VRNNGauss(VrnnGaussAbs):
 
         self.phi_z = nn.Sequential(
             nn.Linear(self.z_dim, input_dim),
-            nn.ReLU(),
             nn.LayerNorm(input_dim),
-            nn.Linear(input_dim, int(5 * self.h_dim / 12)),
             nn.ReLU(),
+            nn.Linear(input_dim, int(5 * self.h_dim / 12)),
             nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.ReLU(),
             nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
         )
 
@@ -101,14 +134,14 @@ class VRNNGauss(VrnnGaussAbs):
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
             nn.Linear(int(self.h_dim / 2), int(2 * self.h_dim / 3)),
-            nn.ReLU(),
             nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.ReLU(),
             nn.Linear(int(2 * self.h_dim / 3), int(5 * self.h_dim / 6)),
-            nn.ReLU(),
             nn.LayerNorm(int(5 * self.h_dim / 6)),
-            nn.Linear(int(5 * self.h_dim / 6), self.h_dim),
             nn.ReLU(),
-            nn.LayerNorm(self.h_dim)
+            nn.Linear(int(5 * self.h_dim / 6), self.h_dim),
+            nn.LayerNorm(self.h_dim),
+            nn.ReLU(),
         )
 
         self.r_dec = nn.Sequential(
@@ -117,20 +150,20 @@ class VRNNGauss(VrnnGaussAbs):
 
         self.dec_mean = nn.Sequential(
             nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
-            nn.ReLU(),
             nn.LayerNorm(int(2 * self.h_dim / 3)),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.ReLU(),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.LayerNorm(int(self.h_dim / 2)),
+            nn.ReLU(),
             nn.Linear(int(self.h_dim / 2), self.input_dim)
         )
         self.dec_logvar = nn.Sequential(
             nn.Linear(self.h_dim, int(2 * self.h_dim / 3)),
-            nn.ReLU(),
             nn.LayerNorm(int(2 * self.h_dim / 3)),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.ReLU(),
+            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
             nn.LayerNorm(int(self.h_dim / 2)),
+            nn.ReLU(),
             nn.Linear(int(self.h_dim / 2), self.input_dim),
             # nn.ReLU(),
             nn.Softplus(),
@@ -141,9 +174,7 @@ class VRNNGauss(VrnnGaussAbs):
         self.rnn = nn.LSTM(self.h_dim, self.h_dim, self.n_layers, bias)  # , batch_first=True
 
     def forward(self, y):
-        y_1, meta = self.scattering_transform(y[:, 0, :])
-        y_2, meta_2 = self.scattering_transform(y[:, 1, :])
-        y = torch.cat((y_1[:, :, 0:int(self.input_dim/2)], y_2[:, :, 0:int(self.input_dim/2)]), dim=2)
+        y, meta = self.scattering_transform(y)
         scattering_original = y
         loss = torch.zeros(1, device=self.device, requires_grad=True)
         # initialization
@@ -164,17 +195,20 @@ class VRNNGauss(VrnnGaussAbs):
         # prior_mean_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
         # prior_logvar_t = torch.zeros([y.size(1), self.z_dim], device=self.device)
 
-        prior_mean_t = torch.randn([y.size(1), self.z_dim], device=self.device) * 0.01
-        prior_logvar_t = torch.full([y.size(1), self.z_dim], -1.0, device=self.device)  # log(var) = -1 => var = exp(-1)
+        # prior_mean_t = torch.randn([y.size(1), self.z_dim], device=self.device) * 0.01
+        # prior_logvar_t = torch.full([y.size(1), self.z_dim], -1.0, device=self.device)  # log(var) = -1 => var = exp(-1)
 
         # for all time steps
         for t in range(y.size(0)):
             # feature extraction: y_t
-            # phi_y_t = self.phi_y(y[:, :, t])  # y original is shape (batch_size, input_size, input_dim)
+            # y original is shape (batch_size, input_size, input_dim)
             phi_y_t = self.phi_y(y[t]) + self.r_phi_y(y[t])
-            # feature extraction: u_t
-            # phi_u_t = self.phi_u(u[:, :, t])
+
             phi_h_t = self.phi_h(h[-1]) + self.r_phi_h(h[-1])
+
+            prior_t = self.prior(h[-1]) + self.r_prior(h[-1])
+            prior_mean_t = self.prior_mean(prior_t)
+            prior_logvar_t = self.prior_logvar(prior_t)
             # encoder: y_t, h_t -> z_t
             enc_t = (self.enc(torch.cat([phi_y_t, phi_h_t], 1)) +
                      self.r_enc(torch.cat([phi_y_t, phi_h_t], 1)))
@@ -251,11 +285,14 @@ class VRNNGauss(VrnnGaussAbs):
         h = torch.randn(self.n_layers, batch_size, self.h_dim, device=self.device)
         c = torch.randn(self.n_layers, batch_size, self.h_dim, device=self.device)
 
-        prior_mean_t = torch.zeros([batch_size, self.z_dim], device=self.device)
-        prior_logvar_t = torch.zeros([batch_size, self.z_dim], device=self.device)
+        # prior_mean_t = torch.zeros([batch_size, self.z_dim], device=self.device)
+        # prior_logvar_t = torch.zeros([batch_size, self.z_dim], device=self.device)
 
         # for all time steps
         for t in range(input_size):
+            prior_t = self.prior(h[-1]) + self.r_prior(h[-1])
+            prior_mean_t = self.prior_mean(prior_t)
+            prior_logvar_t = self.prior_logvar(prior_t)
             # sampling and reparameterization: get new z_t
             temp = tdist.Normal(prior_mean_t, prior_logvar_t.exp().sqrt())
             z_t = tdist.Normal.rsample(temp)
@@ -276,16 +313,3 @@ class VRNNGauss(VrnnGaussAbs):
             _, (h, c) = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), (h, c))
 
         return sample, sample_mu, sample_sigma
-
-
-class VRNNGaussClassifier(nn.Module):
-    def __init__(self, z_dim, num_classes):
-        super(VRNNGaussClassifier, self).__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(z_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_classes)
-        )
-
-    def forward(self, z):
-        return self.fc(z)
