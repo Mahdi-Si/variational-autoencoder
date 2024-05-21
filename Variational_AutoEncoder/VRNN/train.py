@@ -13,10 +13,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, random_split
 import numpy as np
-
-# from torch.utils.tensorboard import SummaryWriter
-# from vrnn_gauss_I import VRNNGauss
-from vrnn_gauss_GMM_experiment_5 import VRNNGauss
+from vrnn_gauss_GMM_experiment_6 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -24,13 +21,6 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-"""implementation of the Variational Recurrent
-Neural Network (VRNN) from https://arxiv.org/abs/1506.02216
-using unimodal isotropic gaussian distributions for 
-inference, prior, and generating models."""
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -51,7 +41,6 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
         data = data.to(device)
         optimizer.zero_grad()
         results = model(data)
-        # loss = results.kld_loss + results.nll_loss
         loss = (kld_beta * results.kld_loss) + results.nll_loss
         loss.backward()
         optimizer.step()
@@ -68,7 +57,7 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
                    f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {kld_beta * results.kld_loss:.5f} | '
                    f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
         print(message)
-        # tqdm.write(message)
+        tqdm.write(message)
         if epoch_train % plot_every_epoch == 0:
             if batch_idx % 100 == 0:
                 signal_ = data[0]
@@ -309,11 +298,11 @@ if __name__ == '__main__':
     # test_nll_loss_list = []
     for epoch in tqdm(range(start_epoch, n_epochs + 1), desc='Epoch:'):
         # log_resource_usage()
-        if epoch == 2000:
-            new_batch_size = batch_size // 2  # Reduce batch size
-            print(f'Reducing batch size to {new_batch_size}')
-            train_loader = DataLoader(train_dataset, batch_size=new_batch_size, shuffle=True, num_workers=20)
-            test_loader = DataLoader(test_dataset, batch_size=new_batch_size, shuffle=False, num_workers=20)
+        # if epoch == 2000:
+        #     new_batch_size = batch_size // 2  # Reduce batch size
+        #     print(f'Reducing batch size to {new_batch_size}')
+        #     train_loader = DataLoader(train_dataset, batch_size=new_batch_size, shuffle=True, num_workers=20)
+        #     test_loader = DataLoader(test_dataset, batch_size=new_batch_size, shuffle=False, num_workers=20)
         train_loss, train_rec_loss, train_kld_loss = train(model=model, epoch_train=epoch,
                                                            plot_dir=train_results_dir,
                                                            plot_every_epoch=plot_every_epoch,
