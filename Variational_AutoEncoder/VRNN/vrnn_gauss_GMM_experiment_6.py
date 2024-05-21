@@ -346,8 +346,9 @@ class VRNNGauss(VrnnGaussAbs):
             # sample_t, dec_mean_t, dec_logvar_t = self._reparameterized_sample_gmm(dec_mean_t_gmm,
             #                                                                       dec_logvar_t_gmm,
             #                                                                       dec_pi_t)
-            dec_mean_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
-            dec_logvar_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
+            # dec_mean_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
+            dec_mean_t = torch.sum(dec_pi_t * dec_mean_t_gmm, dim=-1)
+            # dec_logvar_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
             # end   ====================================================================
 
 
@@ -358,7 +359,6 @@ class VRNNGauss(VrnnGaussAbs):
             all_dec_mean.append(dec_mean_t)
             all_dec_std.append(dec_logvar_t)
             all_z_t.append(z_t)
-
         results = VrnnForward(
             rec_loss=loss,  # (1,)
             kld_loss=kld_loss,  # ()
@@ -464,6 +464,19 @@ class VRNNGauss(VrnnGaussAbs):
         Returns:
         torch.Tensor: Reconstructed signal (batch_size, input_dim)
         """
+        samples = []
+        for n in range(dec_mean.shape[1]):
+            # likelihood of a single mixture at evaluation point
+            pred_dist = tdist.Normal(dec_mean[:, n, :], dec_logvar[:, n, :].exp().sqrt())
+            x_mod = torch.mm(x[:, n].unsqueeze(1), torch.ones(1, self.n_mixtures, device=self.device))
+            # like = pred_dist.log_prob(x_mod)
+            # weighting by probability of mixture and summing
+            # temp = (dec_pi[:, n, :] * like)
+            # temp = temp.sum()
+            # log-likelihood added to previous log-likelihoods
+            loglike = loglike + temp
+
+
         # Convert log variances to standard deviations
         dec_std = torch.exp(0.5 * dec_logvar)
 
