@@ -241,8 +241,9 @@ class VRNNGauss(VrnnGaussAbs):
             nn.LayerNorm(int(self.h_dim / 2)),
             nn.ReLU(),
             nn.Linear(int(self.h_dim / 2), self.input_dim * self.n_mixtures),
-            nn.Softmax(dim=1)
+            # nn.Softmax(dim=1)
         )
+        self.dec_pi_activation = nn.Softmax(dim=2)
 
         # self.r_dec_mean = nn.Linear(self.h_dim, self.input_dim * self.n_mixtures)
         # self.r_dec_logvar = nn.Sequential(
@@ -328,7 +329,8 @@ class VRNNGauss(VrnnGaussAbs):
                 scale = self.modify_h.get('scale')
                 shift = self.modify_h.get('shift')
                 h = self._modify_h(h=h, modify_dims=modify_dims, scale=scale, shift=shift)
-            dec_pi_t = (self.dec_pi(dec_t)).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_pi_t_gmm = (self.dec_pi(dec_t)).view(batch_size, self.input_dim, self.n_mixtures)
+            dec_pi_t = self.dec_pi_activation(dec_pi_t_gmm)
             # computing the loss
             KLD, kld_element = self.kld_gauss_(enc_mean_t, enc_logvar_t, prior_mean_t, prior_logvar_t)
             loss_pred = self.loglikelihood_gmm(y[t], dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
@@ -348,9 +350,9 @@ class VRNNGauss(VrnnGaussAbs):
             #                                                                       dec_pi_t)
             # dec_mean_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
             dec_mean_t = torch.sum(dec_pi_t * dec_mean_t_gmm, dim=-1)
+            dec_logvar_t = dec_mean_t
             # dec_logvar_t = self.reconstruct(dec_mean_t_gmm, dec_logvar_t_gmm, dec_pi_t)
             # end   ====================================================================
-
 
             all_h.append(h)
             all_kld.append(kld_element)
