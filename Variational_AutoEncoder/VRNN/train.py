@@ -13,7 +13,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, random_split
 import numpy as np
-from vrnn_gauss_GMM_experiment_6 import VRNNGauss
+from vrnn_gauss_GMM_experiment_7 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
@@ -57,7 +57,7 @@ def train(epoch_train=None, model=None, kld_beta=1.1, plot_dir=None, tag='', tra
                    f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {kld_beta * results.kld_loss:.5f} | '
                    f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
         print(message)
-        tqdm.write(message)
+        # tqdm.write(message)
         if epoch_train % plot_every_epoch == 0:
             if batch_idx % 100 == 0:
                 signal_ = data[0]

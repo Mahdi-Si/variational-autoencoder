@@ -27,75 +27,73 @@ class VRNNGauss(VrnnGaussAbs):
         self.n_mixtures = 7
         # feature-extracting transformations (phi_y, phi_u and phi_z)
         self.phi_y = nn.Sequential(
-            nn.Linear(self.input_dim, int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.Linear(self.input_dim, 17),
+            nn.LayerNorm(17),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 4), int(5 * self.h_dim / 12)),
-            nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.Linear(17, 26),
+            nn.LayerNorm(26),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2))
+            nn.Linear(26, 30)
 
         )
 
-        self.r_phi_y = nn.Linear(self.input_dim, int(self.h_dim / 2))
+        self.r_phi_y = nn.Linear(self.input_dim, 30)
 
         self.phi_h = nn.Sequential(
-            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(self.h_dim, 50),
+            nn.LayerNorm(50),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(50, 40),
+            nn.LayerNorm(40),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
-            nn.ReLU(),
+            nn.Linear(40, 30),
         )
 
         self.r_phi_h = nn.Sequential(
-            nn.Linear(self.h_dim, int(self.h_dim / 2))
+            nn.Linear(self.h_dim, 30)
         )
 
         self.prior = nn.Sequential(
-            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(self.h_dim, 50),
+            nn.LayerNorm(50),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(50, 40),
+            nn.LayerNorm(40),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(40, 30),
+            nn.LayerNorm(30),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.Linear(30, 20),
         )
 
         self.r_prior = nn.Sequential(
-            nn.Linear(self.h_dim, int(self.h_dim / 3))
+            nn.Linear(self.h_dim, 20)
         )
 
         self.prior_mean = nn.Sequential(
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.Linear(20, 16),
+            nn.LayerNorm(16),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 5)),
-            nn.LayerNorm(int(self.h_dim / 5)),
+            nn.Linear(16, 13),
+            nn.LayerNorm(13),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 5), int(2 * self.z_dim)),
-            nn.LayerNorm(int(2 * self.z_dim)),
+            nn.Linear(13, 11),
+            nn.LayerNorm(11),
             nn.ReLU(),
-            nn.Linear(int(2 * self.z_dim), self.z_dim),
+            nn.Linear(11, 9),
         )
 
         self.prior_logvar = nn.Sequential(
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.Linear(20, 16),
+            nn.LayerNorm(16),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 5)),
-            nn.LayerNorm(int(self.h_dim / 5)),
+            nn.Linear(16, 13),
+            nn.LayerNorm(13),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 5), int(2 * self.z_dim)),
-            nn.LayerNorm(int(2 * self.z_dim)),
+            nn.Linear(13, 11),
+            nn.LayerNorm(11),
             nn.ReLU(),
-            nn.Linear(int(2 * self.z_dim), self.z_dim),
+            nn.Linear(11, 9),
             nn.Softplus()
         )
 
@@ -107,32 +105,32 @@ class VRNNGauss(VrnnGaussAbs):
 
         # encoder function (phi_enc) -> Inference
         self.enc = nn.Sequential(
-            nn.Linear(2 * int(self.h_dim / 2), int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(60, 50),
+            nn.LayerNorm(50),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(50, 40),
+            nn.LayerNorm(40),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(40, 30),
+            nn.LayerNorm(30),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), int(self.h_dim / 3)),
+            nn.Linear(30, 20),
         )
 
         self.r_enc = nn.Sequential(
-            nn.Linear(self.h_dim, int(self.h_dim / 3))
+            nn.Linear(self.h_dim, 20)
         )
         self.enc_mean = nn.Sequential(
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.Linear(20, 18),
+            nn.LayerNorm(18),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 6)),
-            nn.LayerNorm(int(self.h_dim / 6)),
+            nn.Linear(18, 15),
+            nn.LayerNorm(15),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 6), int(self.h_dim / 10)),
-            nn.LayerNorm(int(self.h_dim / 10)),
+            nn.Linear(15, 12),
+            nn.LayerNorm(12),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 10), self.z_dim),
+            nn.Linear(12, 9),
         )
 
         # self.r_enc_mean = nn.Sequential(
@@ -140,16 +138,16 @@ class VRNNGauss(VrnnGaussAbs):
         # )
 
         self.enc_logvar = nn.Sequential(
-            nn.Linear(int(self.h_dim / 3), int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
+            nn.Linear(20, 18),
+            nn.LayerNorm(18),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 6)),
-            nn.LayerNorm(int(self.h_dim / 6)),
+            nn.Linear(18, 15),
+            nn.LayerNorm(15),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 6), int(self.h_dim / 10)),
-            nn.LayerNorm(int(self.h_dim / 10)),
+            nn.Linear(15, 12),
+            nn.LayerNorm(12),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 10), self.z_dim),
+            nn.Linear(12, 9),
             nn.Softplus(),
         )
 
@@ -159,88 +157,89 @@ class VRNNGauss(VrnnGaussAbs):
         # )
 
         self.phi_z_1 = nn.Sequential(
-            nn.Linear(self.z_dim, self.input_dim),
-            nn.LayerNorm(input_dim),
+            nn.Linear(self.z_dim, 12),
+            nn.LayerNorm(12),
             nn.ReLU(),
-            nn.Linear(input_dim, int(self.h_dim / 6)),
-            nn.LayerNorm(int(self.h_dim / 6)),
+            nn.Linear(12, 15),
+            nn.LayerNorm(15),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 6), int(self.h_dim / 4)),
-            nn.LayerNorm(int(self.h_dim / 4)),
-            nn.ReLU(),
+            nn.Linear(15, 18),
         )
 
         self.r_phi_z_1 = nn.Sequential(
-            nn.Linear(self.z_dim, int(self.h_dim / 4))
+            nn.Linear(self.z_dim, 18)
         )
 
         self.phi_z_2 = nn.Sequential(
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 3)),
-            nn.LayerNorm(int(self.h_dim / 3)),
+            nn.Linear(18, 20),
+            nn.LayerNorm(20),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 3), int(5 * self.h_dim / 12)),
-            nn.LayerNorm(int(5 * self.h_dim / 12)),
+            nn.Linear(20, 25),
+            nn.LayerNorm(25),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 12), int(self.h_dim / 2)),
+            nn.Linear(25, 30),
         )
 
         self.r_phi_z_2 = nn.Sequential(
-            nn.Linear(int(self.h_dim / 4), int(self.h_dim / 2))
+            nn.Linear(18, 30)
         )
 
         # decoder function (phi_dec) -> Generation
         self.dec = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(30, 35),
+            nn.LayerNorm(35),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(35, 40),
+            nn.LayerNorm(40),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), self.h_dim)
+            nn.Linear(40, 45),
+            nn.LayerNorm(45),
+            nn.ReLU(),
+            nn.Linear(45, 50)
         )
 
         self.r_dec = nn.Sequential(
-            nn.Linear(int(self.h_dim / 2), self.h_dim)
+            nn.Linear(30, 50)
         )
 
         self.dec_mean = nn.Sequential(
-            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(50, 55),
+            nn.LayerNorm(55),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(55, 60),
+            nn.LayerNorm(60),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(60, 69),
+            nn.LayerNorm(69),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), self.input_dim * self.n_mixtures)
+            nn.Linear(69, 77)
         )
         self.dec_logvar = nn.Sequential(
-            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(50, 55),
+            nn.LayerNorm(55),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(55, 60),
+            nn.LayerNorm(60),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(60, 69),
+            nn.LayerNorm(69),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), self.input_dim * self.n_mixtures),
+            nn.Linear(69, 77),
             # nn.ReLU(),
             nn.Softplus(),
         )
 
         self.dec_pi = nn.Sequential(
-            nn.Linear(self.h_dim, int(5 * self.h_dim / 6)),
-            nn.LayerNorm(int(5 * self.h_dim / 6)),
+            nn.Linear(50, 55),
+            nn.LayerNorm(55),
             nn.ReLU(),
-            nn.Linear(int(5 * self.h_dim / 6), int(2 * self.h_dim / 3)),
-            nn.LayerNorm(int(2 * self.h_dim / 3)),
+            nn.Linear(55, 60),
+            nn.LayerNorm(60),
             nn.ReLU(),
-            nn.Linear(int(2 * self.h_dim / 3), int(self.h_dim / 2)),
-            nn.LayerNorm(int(self.h_dim / 2)),
+            nn.Linear(60, 69),
+            nn.LayerNorm(69),
             nn.ReLU(),
-            nn.Linear(int(self.h_dim / 2), self.input_dim * self.n_mixtures),
+            nn.Linear(69, 77),
             # nn.Softmax(dim=1)
         )
         self.dec_pi_activation = nn.Softmax(dim=2)
