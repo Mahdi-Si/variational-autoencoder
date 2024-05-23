@@ -13,7 +13,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, random_split
 import numpy as np
-from vrnn_gauss_experiment_6 import VRNNGauss
+from vrnn_gauss_GMM_experiment_8 import VRNNGauss
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
 from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
