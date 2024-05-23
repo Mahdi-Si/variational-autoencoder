@@ -294,7 +294,9 @@ if __name__ == '__main__':
     model = VRNNGauss(input_dim=input_dim, input_size=raw_input_size, h_dim=h_dim, z_dim=z_dim,
                       n_layers=n_layers, device=device, log_stat=log_stat, bias=False)
     params = model.parameters()
-    check_point_path = os.path.normpath(r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h112-l7-Be2\VRNN-7896.pth")
+    check_point_path = os.path.normpath(
+        r"C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\h96_l11\VRNN-5697.pth"
+    )
     checkpoint = torch.load(check_point_path)
     # model.load_state_dict(checkpoint)
     print(checkpoint.keys())
