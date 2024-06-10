@@ -1,31 +1,43 @@
 general_config:
-  tag: experiment_-h36-l9_pdfs
+  tag: classifier_tests
   checkpoint_path: null
   lr: 0.01
+  lr_milestone: [50, 8000]
   weight_decay: 0.0
   checkpoint_frequency: 1
-  plot_frequency: 1
-  epochs: 4000
+  plot_frequency: 1000
+  epochs: 1
   channel_num: 1
   batch_size:
-    train: 500
+    train: 5
 
 model_config:
   VAE_model:
     raw_input_size: 2400
     input_size: 150
-    input_dim: 22
-    RNN_hidden_dim: 66
-    latent_size: 5
+    input_dim: 11
+    RNN_hidden_dim: 22
+    latent_size: 3
     num_RNN_layers: 4
-    kld_beta: 0.00001
+    kld_beta: 0.0001
+    freeze_vrnn: False
+  vrnn_checkpoint: null
 
 
 folders_config:
   out_dir_base: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/runs/variational-autoencoder
 
 dataset_config:
+#    dataset_dir: C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\HEALTHY_HIE_Jsons_small
 #    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/HEALHRY_Jsons
-    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset_for_test
+#    dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset_for_test
+    dataset_dir: C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason
     stat_path: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/log_stats.npy
     aux_dataset_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/selected_one_jason
+
+
+test_dataset:
+  test_data_dir: C:/Users/mahdi/Desktop/Mahdi-Si-Projects/AI/datasets/FHR/Json/subset_for_test
+  test_data_selected_dir: C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\selected_one_jason
+  HIE_test_data_dir: C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\datasets\FHR\Json\HIE_Jsons
+  test_checkpoint_path: C:\Users\mahdi\Desktop\Mahdi-Si-Projects\AI\runs\variational-autoencoder\VM\gmm_pa_l3\VRNN-3549.pth

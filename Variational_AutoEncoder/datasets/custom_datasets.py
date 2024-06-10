@@ -2,6 +2,49 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import os
 import json
+import numpy as np
+
+def decimate_majority(tensor, factor=16, threshold=0.8):
+    batch_size, sequence_length = tensor.size()
+    new_length = sequence_length // factor
+
+    # Reshape tensor to (batch_size, new_length, factor)
+    reshaped = tensor.view(batch_size, new_length, factor)
+
+    # Apply majority voting
+    def majority_vote(chunk):
+        chunk = chunk.numpy()
+        counts = np.bincount(chunk)
+        if counts[1:].sum() / factor >= threshold:
+            return counts[1:].argmax() + 1
+        else:
+            return 0
+
+    majority_voted = torch.tensor([[majority_vote(chunk) for chunk in batch] for batch in reshaped], dtype=torch.long)
+
+    return majority_voted
+
+
+def decimate_majority_list(data, factor=16, threshold=0.8):
+    # Ensure the length of the data is a multiple of factor
+    assert len(data) % factor == 0, "The length of the data must be a multiple of the factor."
+
+    new_length = len(data) // factor
+
+    # Reshape the list into chunks of size 'factor'
+    reshaped = np.array(data).reshape(new_length, factor)
+
+    # Apply majority voting
+    def majority_vote(chunk):
+        counts = np.bincount(chunk)
+        if counts[1:].sum() / factor >= threshold:
+            return counts[1:].argmax() + 1
+        else:
+            return 0
+
+    majority_voted = [majority_vote(chunk) for chunk in reshaped]
+
+    return majority_voted
 
 
 class FHRDataset(Dataset):
@@ -53,7 +96,7 @@ class JsonDatasetPreload(Dataset):
         up = torch.tensor(sample_data['up'])
         epoch_num = sample_data['domain_starts'] / 600
         guid = sample_data['GUID'] + str(sample_data['domain_starts'])
-        target = torch.tensor(sample_data['target'])
+        target = torch.tensor(decimate_majority_list(sample_data['target']))
         sample_weight = torch.tensor(sample_data['sample_weights'])
         # return fhr, target, sample_weight
         return fhr, guid, epoch_num, target, sample_weight
@@ -79,7 +122,7 @@ class FhrUpPreload(Dataset):
         up = torch.tensor(sample_data['up'])
         guid = sample_data['GUID'] + str(sample_data['domain_starts'])
         epoch_num = sample_data['domain_starts']/600
-        target = torch.tensor(sample_data['target'])
+        target = decimate_majority_list(torch.tensor(sample_data['target']))
         sample_weight = torch.tensor(sample_data['sample_weights'])
         two_channel_signal = torch.stack([fhr, up], dim=0)
         return two_channel_signal, guid, epoch_num, target, sample_weight

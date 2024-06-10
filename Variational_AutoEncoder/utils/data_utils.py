@@ -291,7 +291,7 @@ def plot_scattering_v2(signal=None, plot_order=None, Sx=None, meta=None, plot_se
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + '_' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+    plt.savefig(plot_dir + '/st-plots' + tag + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
     plt.close(fig)
 
 
@@ -416,11 +416,14 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax[i_row, 0].autoscale(enable=True, axis='x', tight=True)
         ax[i_row, 0].set_xticklabels([])
         ax[i_row, 0].set_ylabel('Hidden States Mean')
-
+    t_original = np.linspace(0, 1, len(signal_1))
+    t_reduced = np.linspace(0, 1, Sx.shape[1])
     for i in range(z_latent_mean.shape[0]):
         i_row += 1
-        ax[i_row, 0].plot(z_latent_mean[i, :], linewidth=1.5, label="Latent Representation")
-        ax[i_row, 0].fill_between(np.arange(len(z_latent_mean[i, :])),
+        ax[i_row, 0].plot(t_reduced, z_latent_mean[i, :], linewidth=2, label="Latent Representation")
+        ax2 = ax[i_row, 0].twinx()
+        ax2.plot(t_original, signal_1, linewidth=1, label="fhr", color='#e0371d')
+        ax[i_row, 0].fill_between(t_reduced,
                                   z_latent_mean[i, :] - z_latent_std[i, :],
                                   z_latent_mean[i, :] + z_latent_std[i, :],
                                   color='blue', alpha=0.25, label='Std dev')
@@ -434,7 +437,10 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     ax[0, 1].set_axis_off()
     # plt.savefig(plot_dir + '/' + record_name + '_' + str(domain_start[i_segment]) + '_st.pdf', bbox_inches='tight',
     #             orientation='landscape')
-    plt.savefig(plot_dir + '/' + tag + 'overall' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=300)
+    plt.savefig(plot_dir + '/' + 'st-true-reconstructed' + tag + '.pdf',
+                bbox_inches='tight',
+                orientation='landscape',
+                dpi=300)
     plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
     # plot latent dim and histogram of it
@@ -486,7 +492,10 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         #     # ax[i_row, 0].set_xticklabels([])
         #     ax[i_row, 0].set_ylabel(f'Latent Dim Histogram {i}')
 
-        plt.savefig(plot_dir + '/' + tag + '_latent' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.savefig(plot_dir + '/' + 'latent-representation' + tag + '.pdf',
+                    bbox_inches='tight',
+                    orientation='landscape',
+                    dpi=50)
         plt.close(fig)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -567,6 +576,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         for i in range(kld_values.shape[0]):
             i_row += 1
             ax[i_row, 1].set_axis_off()
+            kld_values[i, 0:10] = kld_values[i, 10]
             ax[i_row, 0].plot(t_1, kld_values[i, :], linewidth=1.5, color="#0C2D57")
 
             ax2 = ax[i_row, 0].twinx()
@@ -581,7 +591,10 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
         ax3 = ax[i_row, 0].twinx()
         ax3.plot(t_2, signal_1, linewidth=1.5)
 
-        plt.savefig(plot_dir + '/' + tag + '_klds' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.savefig(plot_dir + '/' + 'kld' + tag + '.pdf',
+                    bbox_inches='tight',
+                    orientation='landscape',
+                    dpi=50)
         plt.close(fig)
 
 
@@ -609,7 +622,7 @@ def plot_averaged_results(signal=None, Sx=None, Sxr_mean=None, Sxr_std=None, z_l
     # plt.savefig(plot_dir + '/' + tag + '_new-sample' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=100)
     # plt.close(fig)
 
-    N_ROWS = 2 * Sx.shape[0]
+    # N_ROWS = 2 * Sx.shape[0]
 
 
 def plot_general_mse(signal=None, plot_order=None, Sx=None, meta=None,
@@ -758,4 +771,86 @@ def plot_distributions(sx_mean=None, sx_std=None, plot_second_channel=False, plo
             ax[i_row, 0].set_ylabel(f'St-Coefficient-{i}')
 
         plt.savefig(plot_dir + '/' + tag + '_sample' + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.close(fig)
+#
+# def plot_histogram(data=None, single_channel=True, bins=100, save_dir=None, tag=''):
+#     plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+#     if single_channel:
+#         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 14))
+#         ax.hist(data, bins=bins, color='royalblue', alpha=0.99, edgecolor='black')
+#         ax.plot(data, np.full_like(data, -0.01), '|', color='black', alpha=0.1, markersize=10)
+#         ax.set_xlabel('Value', fontsize=14)
+#         ax.set_ylabel('Frequency', fontsize=14)
+#         ax.set_title('Distribution of Data with Histogram', fontsize=16)
+#         ax.grid(True, linewidth=0.1)  # Reduce the grid line thickness
+#         mean = np.mean(data)
+#         median = np.median(data)
+#         ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.4f}')
+#         ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.4f}')
+#         ax.legend()
+#         plt.savefig(save_dir + '/' + tag + '.pdf', bbox_inches='tight',
+#                     orientation='landscape', dpi=50)
+#         plt.close(fig)
+#     else:
+#         N_ROWS = data.shape[1]
+#         fig, ax = plt.subplots(nrows=N_ROWS, ncols=1, figsize=(15, N_ROWS * 1.1))
+#         i_row = -1
+#         for dim in range(data.shape[1]):
+#             i_row += 1
+#             data_i = data[:, dim]
+#             ax[i_row].hist(data_i, bins=bins, color='royalblue', alpha=0.99, edgecolor='black')
+#             ax[i_row].plot(data_i, np.full_like(data, -0.01), '|', color='black', alpha=0.1, markersize=10)
+#             # ax[i_row].set_xlabel('Value', fontsize=14)
+#             ax[i_row].set_ylabel(f'Frequency {dim}', fontsize=14)
+#             # ax[i_row].set_title('Distribution of Data with Histogram', fontsize=16)
+#             ax[i_row].grid(True, linewidth=0.1)  # Reduce the grid line thickness
+#             mean = np.mean(data_i)
+#             median = np.median(data_i)
+#             ax[i_row].axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.6f}')
+#             ax[i_row].axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.6f}')
+#             ax[i_row].legend()
+#         plt.savefig(save_dir + '/' + tag + '.pdf', bbox_inches='tight',
+#                     orientation='landscape', dpi=50)
+#         plt.close(fig)
+#
+
+def plot_histogram(data=None, single_channel=True, bins=100, save_dir=None, tag='', num_std_dev=4):
+    plt.rcParams.update({'font.size': 19, 'axes.titlesize': 18, 'axes.labelsize': 18})
+    def filter_outliers(data, num_std_dev):
+        mean = np.mean(data)
+        std_dev = np.std(data)
+        filtered_data = data[np.abs(data - mean) <= num_std_dev * std_dev]
+        return filtered_data
+
+    if single_channel:
+        data = filter_outliers(data, num_std_dev)
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 14))
+        ax.hist(data, bins=bins, color='royalblue', alpha=0.99, edgecolor='black')
+        ax.plot(data, np.full_like(data, -0.01), '|', color='black', alpha=0.1, markersize=10)
+        ax.set_xlabel('Value', fontsize=14)
+        ax.set_ylabel('Frequency', fontsize=14)
+        ax.set_title('Distribution of Data with Histogram', fontsize=16)
+        ax.grid(True, linewidth=0.1)  # Reduce the grid line thickness
+        mean = np.mean(data)
+        median = np.median(data)
+        ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.4f}')
+        ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.4f}')
+        ax.legend()
+        plt.savefig(save_dir + '/' + tag + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
+        plt.close(fig)
+    else:
+        N_ROWS = data.shape[1]
+        fig, ax = plt.subplots(nrows=N_ROWS, ncols=1, figsize=(15, N_ROWS * 1.1))
+        for dim in range(data.shape[1]):
+            data_i = filter_outliers(data[:, dim], num_std_dev)
+            ax[dim].hist(data_i, bins=bins, color='royalblue', alpha=0.99, edgecolor='black')
+            ax[dim].plot(data_i, np.full_like(data_i, -0.01), '|', color='black', alpha=0.1, markersize=10)
+            ax[dim].set_ylabel(f'Frequency {dim}', fontsize=14)
+            ax[dim].grid(True, linewidth=0.1)  # Reduce the grid line thickness
+            mean = np.mean(data_i)
+            median = np.median(data_i)
+            ax[dim].axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {mean:.6f}')
+            ax[dim].axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {median:.6f}')
+            ax[dim].legend()
+        plt.savefig(save_dir + '/' + tag + '.pdf', bbox_inches='tight', orientation='landscape', dpi=50)
         plt.close(fig)

@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.utils
 import torch.utils.data
+import torch.nn.functional as F
+from torch.autograd import Variable
 from vrnn_gauss_base import VrnnGaussAbs, VrnnForward
 
 """implementation of the Variational Recurrent Neural Network (VRNN-Gauss) from https://arxiv.org/abs/1506.02216 using
@@ -262,8 +264,11 @@ class VRNNGauss(VrnnGaussAbs):
         # for all time steps
         for t in range(input_size):
             prior_t = self.prior(h[-1]) + self.r_prior(h[-1])
-            prior_mean_t = self.prior_mean(prior_t)
-            prior_logvar_t = self.prior_logvar(prior_t)
+            prior_mean_logvar_t = self.prior_mean_logvar(prior_t)
+            prior_mean_t = prior_mean_logvar_t[:, :self.z_dim]
+            prior_logvar_t = self.logvar_acv(prior_mean_logvar_t[:, self.z_dim:])
+            # prior_mean_t = self.prior_mean(prior_t)
+            # prior_logvar_t = self.prior_logvar(prior_t)
             # sampling and reparameterization: get new z_t
             temp = tdist.Normal(prior_mean_t, prior_logvar_t.exp().sqrt())
             z_t = tdist.Normal.rsample(temp)
@@ -272,8 +277,9 @@ class VRNNGauss(VrnnGaussAbs):
             phi_z_t = self.phi_z(z_t) + self.r_phi_z(z_t)
 
             dec_t = self.dec(phi_z_t) + self.r_dec(phi_z_t)
-            dec_mean_t = self.dec_mean(dec_t)
-            dec_logvar_t = self.dec_logvar(dec_t)
+            dec_mean_logvar_t = self.dec_mean_logvar(dec_t)
+            dec_mean_t = dec_mean_logvar_t[:, :self.input_dim]
+            dec_logvar_t = self.logvar_acv(dec_mean_logvar_t[:, self.input_dim:])
             temp = tdist.Normal(dec_mean_t, dec_logvar_t.exp().sqrt())
 
             phi_y_t = self.phi_y(dec_mean_t) + self.r_phi_y(dec_mean_t)
@@ -284,3 +290,118 @@ class VRNNGauss(VrnnGaussAbs):
             _, (h, c) = self.rnn(torch.cat([phi_y_t, phi_z_t], 1).unsqueeze(0), (h, c))
 
         return sample, sample_mu, sample_sigma
+
+
+class SeparableConv2D(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, depth_multiplier=1, activation=None):
+        super(SeparableConv2D, self).__init__()
+        # nn.ReLU()
+        # filters: 1, depth_multiplier:1, kernel: (1*1)
+        self.depthwise = nn.Conv2d(in_channels, in_channels * depth_multiplier, kernel_size=kernel_size,
+                                   groups=in_channels, padding='same')
+        self.pointwise = nn.Conv2d(in_channels * depth_multiplier, out_channels, kernel_size=1)
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        if self.activation:
+            x = self.activation(x)
+        return x
+
+
+# todo think about how you can do custom masking
+class CustomMasking(nn.Module):
+    def __init__(self, input_dim, out_shape=None):
+        super(CustomMasking, self).__init__()
+        self.input_dim = input_dim
+        self.out_shape = out_shape
+
+    def forward(self, inputs, mask):
+        masked_inputs = inputs * mask.unsqueeze(-1).float()
+        if self.out_shape is not None:
+            return masked_inputs.view(self.out_shape)
+        return masked_inputs
+
+
+class ClassifierBlock(nn.Module):
+    def __init__(self, conv_in_channels, conv_out_channels, conv_kernel_size, conv_depth_multiplier=1,
+                 conv_activation=None, lstm_input_dim=None, lstm_h=None,lstm_bidirectional=False):
+        super(ClassifierBlock, self).__init__()
+        self.conv_in_channels = conv_in_channels
+        self.conv_out_channels = conv_out_channels
+        self.conv_kernel_size = conv_kernel_size
+        self.conv_depth_multiplier = conv_depth_multiplier
+        self.conv_activation = conv_activation
+        self.hidden_dims = lstm_h
+        self.num_classes = 3  # todo: fix this
+        #
+        # self.bilstm = nn.LSTM(input_size=None, hidden_size=lstm_h, num_layers=lstm_n_layers, bidirectional=True,
+        #                       batch_first=True)
+        self.conv_layer = SeparableConv2D(in_channels=self.conv_in_channels,
+                                          out_channels=self.conv_out_channels,
+                                          kernel_size=self.conv_kernel_size,
+                                          depth_multiplier=self.conv_depth_multiplier,
+                                          activation=self.conv_activation)
+        self.lstm_layers = nn.ModuleList([
+            nn.LSTM(lstm_input_dim if i == 0 else self.hidden_dims[i - 1], self.hidden_dims[i],
+                    bidirectional=lstm_bidirectional, batch_first=True)
+            for i in range(len(self.hidden_dims))
+        ])
+
+        self.linear = nn.Linear(self.hidden_dims[-1], self.num_classes)
+        self.fc_activation = nn.Softmax(dim=2)
+
+    def forward(self, x):
+        # Apply the convolutional layer
+        # input is shape (batch, latent_dim, input_size)
+        # x = x.permute(0, 2, 1).unsqueeze(2)  # change to (batch, channels, height, width) ->  (batch, 3, 1, 150)
+        x = x.unsqueeze(2)
+        x = self.conv_layer(x)  # (batch_size, conv_out_channels, input_size, input_size)
+
+        # Reshape x to (batch_size, seq_len, features) before feeding to LSTM
+        # batch_size, channels, height, width = x.size()
+        # x = x.view(batch_size, channels * height, width)
+
+        # Apply LSTM layers
+        # x shape: (batch, latent_size, 1, 150)
+
+        x = x.squeeze(2).permute(0, 2, 1)
+        for lstm in self.lstm_layers:
+            x, _ = lstm(x)
+
+        # shape could be (batch_size, seq_len, lstm_h[-1])
+
+        # Take the last output of the LSTM
+        # x = x[:, -1, :]
+
+        # Apply the linear layer
+        x = self.linear(x)
+
+        # Apply the activation function
+        # x = self.fc_activation(x)
+
+        return x
+
+
+
+class VRNNClassifier(nn.Module):
+    def __init__(self, vrnn_model, classifier_model, ):
+        super(VRNNClassifier, self).__init__()
+        self.vrnn_model = vrnn_model
+        self.classifier_model = classifier_model
+
+    def forward(self, x):
+        """
+        vrnn_model = VRNNGauss(input_dim, input_size, h_dim, z_dim, n_layers, device, log_stat)
+        classifier_model = ClassifierBlock(conv_in_channels, conv_out_channels, conv_kernel_size,
+                                           conv_depth_multiplier, conv_activation, lstm_input_dim, lstm_h,
+                                           lstm_bidirectional)
+        model = VRNNClassifier(vrnn_model, classifier_model)
+        :param x:
+        :return:
+        """
+        vrnn_output = self.vrnn_model(x)
+        z_latent = torch.stack(vrnn_output.z_latent, dim=2)  # shape (batch_size, latent_dim, input_size 150)
+        classifier_output = self.classifier_model(z_latent)
+        return vrnn_output, classifier_output
