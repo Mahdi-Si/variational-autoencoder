@@ -16,8 +16,8 @@ model_config:
     raw_input_size: 2400
     input_size: 150
     input_dim: 11
-    RNN_hidden_dim: 22
-    latent_size: 3
+    RNN_hidden_dim: 102
+    latent_size: 9
     num_RNN_layers: 4
     kld_beta: 0.0001
     freeze_vrnn: False

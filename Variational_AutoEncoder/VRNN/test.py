@@ -9,15 +9,14 @@ from datetime import datetime
 import sys
 from tqdm import tqdm
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
+from torch.utils.data import DataLoader
 import numpy as np
 from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset, FhrUpPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse, \
-    plot_generated_samples
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_generated_samples
 
 # from vrnn_gauss import VRNN_Gauss
 from vrnn_gauss_experiment_5_old import VRNNGauss
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
+from Variational_AutoEncoder.utils.run_utils import StreamToLogger
 import pandas as pd
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # remove this line when creating a new environment
