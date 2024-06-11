@@ -66,8 +66,6 @@ class GraphModel:
         self.vrnn_checkpoint_path = config['model_config']['vrnn_checkpoint']
         self.freeze_vrnn = config['model_config']['VAE_model']['freeze_vrnn']
 
-        self.previous_check_point = config['general_config']['checkpoint_path']
-
         # hyperparameters
         x_dim = self.input_dim
         h_dim = self.rnn_hidden_dim
@@ -103,6 +101,7 @@ class GraphModel:
         self.log_stat = (x_mean, x_std)
 
     def create_model(self):
+        self.setup_config()
         self.vrnn_model = VRNNGauss(input_dim=self.input_dim, input_size=self.raw_input_size,
                                     h_dim=self.rnn_hidden_dim, z_dim=self.latent_dim, n_layers=self.num_layers,
                                     device=device, log_stat=self.log_stat, bias=False).to(device)
@@ -117,15 +116,14 @@ class GraphModel:
         print('==' * 50)
         return self
 
-    @staticmethod
-    def load_pretrained_vrnn(model, checkpoint_path):
+    def load_pretrained_vrnn(self, checkpoint_path):
         # This will load the pretrained VRNN without classification model.
-        model_dict = model.state_dict()  # Get the state dictionary of the model
+        model_dict = self.model.vrnn_model.state_dict()  # Get the state dictionary of the model
         pretrained_dict = torch.load(checkpoint_path)  # Load the checkpoint
         # Filter out unnecessary keys and update the state dictionary
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
-        model.load_state_dict(model_dict)  # Load the updated state dictionary into the model
+        self.model.vrnn_model.load_state_dict(model_dict)  # Load the updated state dictionary into the model
     @staticmethod
     def save_checkpoint(model, optimizer, epoch, loss, filename='checkpoint.pth.tar'):
         torch.save({
@@ -162,10 +160,6 @@ class GraphModel:
         total_loss = 0
         plt.close('all')
         train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch_train}")
-        if self.vrnn_checkpoint_path is not None:
-            self.load_pretrained_vrnn(model=self.vrnn_model, checkpoint_path=self.vrnn_checkpoint_path)
-        if self.freeze_vrnn:
-            self.freeze_model(self.model.vrnn_model)
         self.model.train()
         # todo: change the data from dataloader based on the mimo_trainer
         for batch_idx, train_data in train_loader_tqdm:
@@ -274,7 +268,7 @@ class GraphModel:
         print(f'Average Validation Loss Per Batch: {validation_loss_avg} \n Validation accuracy is: {accuracy}')
         return validation_loss_avg, accuracy
 
-    #todo: figure out a unified way of saving the model checkpoint
+    # todo: figure out a unified way of saving the model checkpoint
     def do_train_with_dataset(self, train_loader, validation_loader):
         optimizer = torch.optim.Adam(list(self.model.vrnn_model.parameters()) +
                                      list(self.model.classifier_model.parameters()),
@@ -291,6 +285,12 @@ class GraphModel:
             print(f"Loaded checkpoint '{self.previous_check_point}' (epoch {checkpoint['epoch']})")
         else:
             start_epoch = 1
+
+        if self.vrnn_checkpoint_path is not None:
+            self.load_pretrained_vrnn(checkpoint_path=self.vrnn_checkpoint_path)
+        if self.freeze_vrnn:
+            self.freeze_model(self.model.vrnn_model)
+
         train_loss_list = []
         train_accuracy_list = []
 
@@ -357,7 +357,6 @@ if __name__ == '__main__':
     train_size = int(0.9 * dataset_size)
     test_size = dataset_size - train_size
     print(f'Train size: {train_size} \n Test size: {test_size}')
-    graph_model.setup_config()
     graph_model.create_model()
     train_dataset, test_dataset = random_split(fhr_healthy_dataset, [train_size, test_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=20)
