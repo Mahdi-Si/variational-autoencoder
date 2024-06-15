@@ -31,13 +31,13 @@ class VRNNGauss(VrnnGaussAbs):
         self.phi_y = nn.Sequential(
             nn.Linear(self.input_dim, 22),
             nn.LayerNorm(22),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(22, 33),
             nn.LayerNorm(33),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(33, 44),
             nn.LayerNorm(44),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(44, 51),
         )
 
@@ -46,13 +46,13 @@ class VRNNGauss(VrnnGaussAbs):
         self.phi_h = nn.Sequential(
             nn.Linear(self.h_dim, 90),
             nn.LayerNorm(90),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(90, 78),
             nn.LayerNorm(78),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(78, 66),
             nn.LayerNorm(66),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(66, 51),
         )
 
@@ -63,13 +63,13 @@ class VRNNGauss(VrnnGaussAbs):
         self.prior = nn.Sequential(
             nn.Linear(self.h_dim, 79),
             nn.LayerNorm(79),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(79, 56),
             nn.LayerNorm(56),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(56, 33),
             nn.LayerNorm(33),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(33, 9),
         )
 
@@ -80,10 +80,10 @@ class VRNNGauss(VrnnGaussAbs):
         self.prior_mean_logvar = nn.Sequential(
             nn.Linear(9, 2 * 9),
             nn.LayerNorm(2 * 9),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(2 * 9, 2 * 9),
             nn.LayerNorm(2 * 9),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(2 * 9, 2 * 9),
         )
 
@@ -91,13 +91,13 @@ class VRNNGauss(VrnnGaussAbs):
         self.enc = nn.Sequential(
             nn.Linear(self.h_dim, 78),
             nn.LayerNorm(78),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(78, 51),
             nn.LayerNorm(51),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(51, 33),
             nn.LayerNorm(33),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(33, 9),
         )
 
@@ -108,20 +108,20 @@ class VRNNGauss(VrnnGaussAbs):
         self.enc_mean_logvar = nn.Sequential(
             nn.Linear(9, 2 * 9),
             nn.LayerNorm(2 * 9),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(2 * 9, 2 * 9),
             nn.LayerNorm(2 * 9),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(2 * 9, 2 * 9),
         )
 
         self.phi_z = nn.Sequential(
             nn.Linear(self.z_dim, 11),
             nn.LayerNorm(11),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(11, 33),
             nn.LayerNorm(33),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(33, 51),
         )
 
@@ -133,13 +133,13 @@ class VRNNGauss(VrnnGaussAbs):
         self.dec = nn.Sequential(
             nn.Linear(51, 57),
             nn.LayerNorm(57),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(57, 63),
             nn.LayerNorm(63),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(63, 69),
             nn.LayerNorm(69),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(69, 77),
         )
 
@@ -150,10 +150,10 @@ class VRNNGauss(VrnnGaussAbs):
         self.dec_mean_logvar_pi = nn.Sequential(
             nn.Linear(77, 3 * 77),
             nn.LayerNorm(3 * 77),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(3 * 77, 3 * 77),
             nn.LayerNorm(3 * 77),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(3 * 77, 3 * 77),
         )
         self.dec_pi_activation = nn.Softmax(dim=2)
@@ -435,12 +435,12 @@ class VRNNGauss(VrnnGaussAbs):
 class SeparableConv2D(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, depth_multiplier=1, activation=None):
         super(SeparableConv2D, self).__init__()
-        # nn.ELU()
+        # nn.ReLU()
         # filters: 1, depth_multiplier:1, kernel: (1*1)
         self.depthwise = nn.Conv2d(in_channels, in_channels * depth_multiplier, kernel_size=kernel_size,
                                    groups=in_channels, padding='same')
         self.pointwise = nn.Conv2d(in_channels * depth_multiplier, out_channels, kernel_size=1)
-        self.activation = nn.ELU()
+        self.activation = nn.ReLU()
 
     def forward(self, x):
         x = self.depthwise(x)
