@@ -11,17 +11,31 @@ import pickle
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, random_split
-import torch.nn.functional as F
 import numpy as np
-from vrnn_classifier_gauss_experiment_1 import VRNNGauss, ClassifierBlock, VRNNClassifier
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
+from vrnn_classifier_GMM_experiment_3 import VRNNGauss, ClassifierBlock, VRNNClassifier
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
 from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
+from Variational_AutoEncoder.utils.run_utils import StreamToLogger, setup_logging
+from sklearn.manifold import TSNE
+
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, \
+    plot_generated_samples, plot_distributions, plot_histogram
+import torch.distributions as tdist
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+# helper functions you can move them later -----------------------------------------------------------------------------
+
+def calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_):
+    dec_mean_t_ = dec_mean_t_.to(Sx_t_.device)
+    dec_std_t_ = dec_std_t_.to(Sx_t_.device)
+    pred_dist = tdist.Normal(dec_mean_t_, dec_std_t_)
+    log_probs = pred_dist.log_prob(Sx_t_)
+    log_likelihoods = log_probs.sum(dim=[1, 2])
+    return log_likelihoods.cpu().numpy()
 
 class EarlyStopping:
     def __init__(self, patience=5, verbose=False, delta=0.00001):
@@ -215,8 +229,8 @@ class VrnnGraphModel:
                 if batch_idx % 100 == 0:
                     signal_ = data[0]
                     sx_ = results.Sx.permute(1, 2, 0)[0]
-                    z_latent_ = torch.stack(results.z_latent, dim=2)[0]
-                    dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
+                    z_latent_ = results.z_latent[0]
+                    dec_mean_ = results.decoder_mean[0]
                     # signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
                     signal = signal_.detach().cpu().numpy()  # for one channels
                     plot_scattering_v2(signal=signal,
@@ -253,8 +267,8 @@ class VrnnGraphModel:
                     if batch_idx % 100 == 0:
                         signal_ = data[0]
                         sx_ = results.Sx.permute(1, 2, 0)[0]
-                        z_latent_ = torch.stack(results.z_latent, dim=2)[0]
-                        dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
+                        z_latent_ = results.z_latent[0]
+                        dec_mean_ = results.decoder_mean[0]
                         # signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
                         signal = signal_.detach().cpu().numpy()  # for one channels
                         plot_scattering_v2(signal=signal,
@@ -349,9 +363,147 @@ class VrnnGraphModel:
                                epoch_num=epoch,
                                plot_dir=self.train_results_dir)
 
+    # new methods to add start -----------------------------------------------------------------------------------------
+    def plot_vrnn_tests(self, vrnn_plot_tests_data_loader, input_dim_t,
+                        modify_h=None, modify_z=None, base_dir=None, channel_num=1):
+        self.model.vrnn_model.modify_z = modify_z
+        self.model.vrnn_model.modify_h = modify_h
+        self.model.vrnn_model.to(device)
+        self.model.vrnn_model.eval()
+        mse_all_data = torch.empty((0, input_dim_t)).to(device)
+        log_likelihood_all_data = []
+        all_st = []
+        with torch.no_grad():
+            for j, complete_batched_data_t in tqdm(enumerate(vrnn_plot_tests_data_loader),
+                                                   total=len(vrnn_plot_tests_data_loader)):
+                batched_data_t = complete_batched_data_t[0]
+                # guids = complete_batched_data_t[1]
+                batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
+                results_t = self.model.vrnn_model(batched_data_t)
+                z_latent_t_ = results_t.z_latent  # (batch_size, latent_dim, 150)
+                h_hidden_t_ = results_t.hidden_states  # (hidden_layers, batch_size, input_len, h_dim)
+                if h_hidden_t_.dim() == 4:
+                    h_hidden_t__ = h_hidden_t_[-1].permute(0, 2, 1)
+                else:
+                    h_hidden_t__ = h_hidden_t_.permute(0, 2, 1)
+                dec_mean_t_ = results_t.decoder_mean  # (batch_size, input_dim, input_size)
+                dec_std_t_ = torch.sqrt(torch.exp(results_t.decoder_std))
+                Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
+                enc_mean_t_ = results_t.encoder_mean  # (batch_size, input_dim, 150)
+                enc_std_t_ = torch.sqrt(torch.exp(results_t.encoder_std))
+                kld_values_t_ = results_t.kld_values
+
+                mse_per_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2) / Sx_t_.size(-1)
+                mse_all_data = torch.cat((mse_all_data, mse_per_coefficients), dim=0)
+                log_likelihoods = calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_)
+                log_likelihood_all_data.extend(log_likelihoods)
+                all_st.append(Sx_t_)
+                save_dir = os.path.join(base_dir, 'Complete vrnn testing')
+                os.makedirs(save_dir, exist_ok=True)
+                signal_channel_dim = Sx_t_.shape[1]
+                signal_len = Sx_t_.shape[2]
+                for signal_index in range(Sx_t_.shape[0]):
+                    save_dir_signal = save_dir
+                    selected_signal = batched_data_t[signal_index]
+                    sx_selected = Sx_t_[signal_index]  # (input_dim, input_size)
+                    z_selected = z_latent_t_[signal_index]
+                    input_data_for_tsne = sx_selected.permute(1, 0).detach().cpu().numpy()
+                    latent_data_for_tsne = z_selected.permute(1, 0).detach().cpu().numpy()
+                    tsne = TSNE(n_components=2, random_state=42)
+                    input_tsne_results = tsne.fit_transform(input_data_for_tsne)
+                    latent_tsne_results = tsne.fit_transform(latent_data_for_tsne)
+                    fig, ax = plt.subplots(nrows=2, figsize=(6, 2 * 6 + 3))
+                    ax[0].scatter(input_tsne_results[:, 0], input_tsne_results[:, 1],
+                                  c=np.linspace(0, 1, signal_len), cmap='Blues', s=100, edgecolors='black')
+                    ax[0].set_ylabel('st original')
+
+                    ax[1].scatter(latent_tsne_results[:, 0], latent_tsne_results[:, 1],
+                                  c=np.linspace(0, 1, signal_len), cmap='Reds', s=100, edgecolors='black')
+                    ax[1].set_ylabel('latent representation')
+                    plt.savefig(save_dir_signal + '/' + 't-SNE' + '.pdf', bbox_inches='tight',
+                                orientation='landscape',
+                                dpi=50)
+                    plt.close(fig)
+
+                    if channel_num == 1:
+                        signal_c = selected_signal.detach().cpu().numpy()  # for 1 channel
+                        two_channel_flag = False
+                    else:
+                        signal_c = selected_signal.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for 2 channel
+                        two_channel_flag = True
+                    plot_averaged_results(signal=signal_c, Sx=sx_selected.detach().cpu().numpy(),
+                                          Sxr_mean=dec_mean_t_[signal_index].detach().cpu().numpy(),
+                                          Sxr_std=dec_std_t_[signal_index].detach().cpu().numpy(),
+                                          z_latent_mean=enc_mean_t_[signal_index].detach().cpu().numpy(),
+                                          z_latent_std=enc_std_t_[signal_index].detach().cpu().numpy(),
+                                          kld_values=kld_values_t_[signal_index].detach().cpu().numpy(),
+                                          h_hidden_mean=h_hidden_t__[signal_index].detach().cpu().numpy(),
+                                          plot_latent=True,
+                                          plot_klds=True,
+                                          two_channel=two_channel_flag,
+                                          plot_state=False,
+                                          # new_sample=new_sample.detach().cpu().numpy(),
+                                          plot_dir=save_dir_signal, tag=f'-{signal_index}')
+                    plot_scattering_v2(signal=signal_c,
+                                       plot_second_channel=two_channel_flag,
+                                       Sx=sx_selected.detach().cpu().numpy(), meta=None,
+                                       Sxr=dec_mean_t_[signal_index].detach().cpu().numpy(),
+                                       Sxr_std=dec_std_t_[signal_index].detach().cpu().numpy(),
+                                       z_latent=enc_mean_t_[signal_index].detach().cpu().numpy(),
+                                       plot_dir=save_dir_signal, tag=f'-{signal_index}')
+
+    def vrnn_mse_test(self, vrnn_mse_test_dataloader,  input_dim_t, modify_h=None, modify_z=None, base_dir=None,
+                      tag="_"):
+        self.model.vrnn_model.modify_z = modify_z
+        self.model.vrnn_model.modify_h = modify_h
+        self.model.vrnn_model.to(device)
+        self.model.vrnn_model.eval()
+        mse_all_data = torch.empty((0, input_dim_t)).to(device)
+        epoch_data_collected = []
+        log_likelihood_all_data = []
+        all_st = []
+        with torch.no_grad():
+            for j, complete_batched_data_t in tqdm(enumerate(vrnn_mse_test_dataloader),
+                                                   total=len(vrnn_mse_test_dataloader)):
+                batched_data_t = complete_batched_data_t[0]
+                batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
+                results_t =  self.model.vrnn_model(batched_data_t)
+                dec_mean_t_ = results_t.decoder_mean  # (batch_size, input_dim, input_size)
+                dec_std_t_ = torch.sqrt(torch.exp(results_t.decoder_std))
+                Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
+                mse_per_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2) / Sx_t_.size(-1)
+                mse_all_data = torch.cat((mse_all_data, mse_per_coefficients), dim=0)
+                log_likelihoods = calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_)
+                log_likelihood_all_data.extend(log_likelihoods)
+                all_st.append(Sx_t_)
+        all_st_tensor = torch.cat(all_st, dim=0)
+        all_st_mean = all_st_tensor.mean(dim=0)
+        all_st_std = all_st_tensor.std(dim=0)
+        tag_hist = tag + 'loglikelihood_'
+        save_dir_hist = os.path.join(base_dir, tag_hist)
+        os.makedirs(save_dir_hist, exist_ok=True)
+        plot_distributions(sx_mean=all_st_mean.detach().cpu().numpy(), sx_std=all_st_std.detach().cpu().numpy(),
+                           plot_second_channel=False, plot_sample=False,
+                           plot_dir=save_dir_hist, plot_dataset_average=True, tag='st_mean')
+        plot_histogram(data=np.array(log_likelihood_all_data), single_channel=True, bins=160, save_dir=save_dir_hist,
+                       tag='loglikelihood_original')
+        mse_all_data_averaged = torch.mean(mse_all_data, dim=1)
+        plot_histogram(data=mse_all_data_averaged.detach().cpu().numpy() / 150,
+                       single_channel=True,
+                       bins=160, save_dir=save_dir_hist, tag='mse-all_dist')
+        plot_histogram(data=mse_all_data.detach().cpu().numpy(),
+                       single_channel=False,
+                       bins=160, save_dir=save_dir_hist, tag='mse-all-data-per')
+        return all_st_tensor
+    def do_test_vrnn_model(self, vrnn_test_dataset):
+        self.plot_vrnn_tests(vrnn_plot_tests_data_loader=vrnn_test_dataset, input_dim_t=self.input_dim,
+                             modify_h=None, modify_z=None, base_dir=self.test_results_dir, channel_num=1)
+        self.vrnn_mse_test(vrnn_mse_test_dataloader=vrnn_test_dataset, input_dim_t=self.input_dim,
+                           modify_h=None, modify_z=None, base_dir=self.test_results_dir, tag='vrnn_mse')
 
 
-    def train(self, epoch_train=None, kld_beta=1.1, plot_dir=None, tag='', train_loader=None,
+    # new methods to add end -----------------------------------------------------------------------------------------
+    def train(self, epoch_train=None, kld_beta=1.1, plot_dir=None, tag='', train_loader_classifier=None,
               optimizer=None, plot_every_epoch=None, loss_fn_classifier=None):
         for param_group in optimizer.param_groups:
             current_learning_rate = param_group['lr']
@@ -363,7 +515,8 @@ class VrnnGraphModel:
         total_samples = 0
         total_loss = 0
         plt.close('all')
-        train_loader_tqdm = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch_train}")
+        train_loader_tqdm = tqdm(enumerate(train_loader_classifier), total=len(train_loader_classifier),
+                                 desc=f"Epoch {epoch_train}")
         self.model.train()
         for batch_idx, train_data in train_loader_tqdm:
             data = train_data[0]
@@ -413,19 +566,12 @@ class VrnnGraphModel:
 
             # grad norm clipping, only in pytorch version >= 1.10
             nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
-            z_latent = torch.stack(results.z_latent, dim=2)
-            # message = (f'Train Epoch: {epoch_train} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
-            #            f'({100. * batch_idx / len(train_loader):.0f}%)] | '
-            #            f'-KLD Loss: {results.kld_loss.item():.5f} - Weighted KLD Loss: {kld_beta * results.kld_loss:.5f} | '
-            #            f'-Reconstruction Loss: {results.rec_loss.item():.5f}')
-            # print(message)
-            # tqdm.write(message)
             if epoch_train % plot_every_epoch == 0:
                 if batch_idx % 100 == 0:
                     signal_ = data[0]
                     sx_ = results.Sx.permute(1, 2, 0)[0]
-                    z_latent_ = torch.stack(results.z_latent, dim=2)[0]
-                    dec_mean_ = torch.stack(results.decoder_mean, dim=2)[0]
+                    z_latent_ = results.z_latent[0]
+                    dec_mean_ = results.decoder_mean[0]
                     # signal = signal_.squeeze(0).permute(1, 0).detach().cpu().numpy()  # for two channels
                     signal = signal_.detach().cpu().numpy()  # for one channels
                     plot_scattering_v2(signal=signal,
@@ -439,9 +585,9 @@ class VrnnGraphModel:
         # print(f'Train Loop train loss is ====> {train_loss_tl}')
         # print('====> Epoch: {} Average loss: {:.4f}'.format(
         #     epoch, train_loss_tl / len(train_loader.dataset)))
-        train_loss_tl_avg = total_loss / len(train_loader)
-        reconstruction_loss_avg = reconstruction_loss_epoch / len(train_loader.dataset)
-        kld_loss_avg = kld_loss_epoch / len(train_loader.dataset)
+        train_loss_tl_avg = total_loss / len(train_loader_classifier)
+        reconstruction_loss_avg = reconstruction_loss_epoch / len(train_loader_classifier.dataset)
+        kld_loss_avg = kld_loss_epoch / len(train_loader_classifier.dataset)
         accuracy = total_correct / total_samples
 
         print(f'Epoch: {epoch_train} - Average Train Loss Per Batch: {train_loss_tl_avg} \n Train accuracy is: {accuracy}')

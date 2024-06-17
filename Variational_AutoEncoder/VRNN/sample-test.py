@@ -9,19 +9,15 @@ from datetime import datetime
 import sys
 from tqdm import tqdm
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader
 import torch.distributions as tdist
 import numpy as np
 from sklearn.manifold import TSNE
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, RepeatSampleDataset, FhrUpPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_general_mse, \
-    plot_generated_samples, plot_distributions, plot_histogram
-import seaborn as sns
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload, RepeatSampleDataset
+from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_averaged_results, plot_generated_samples, plot_distributions, plot_histogram
 # from vrnn_gauss import VRNN_Gauss
-from vrnn_gauss_GMM_experiment_8 import VRNNGauss
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
-import pandas as pd
-import plotly.graph_objects as go
+from vrnn_classifier_gauss_experiment_2 import VRNNGauss
+from Variational_AutoEncoder.utils.run_utils import StreamToLogger
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # remove this line when creating a new environment
 
@@ -32,12 +28,6 @@ else:
     device = torch.device('cpu')
 
 
-# def calculate_log_likelihood_generated(sample, sample_mu, sample_sigma):
-#     dist = torch.distributions.Normal(sample_mu, sample_sigma)
-#     log_probs = dist.log_prob(sample)
-#     total_log_likelihood = log_probs.sum()
-#     return total_log_likelihood
-
 def calculate_log_likelihood_generated(samples, mean, sigma):
     dist = torch.distributions.Normal(mean, sigma)
     log_likelihood = dist.log_prob(samples)
@@ -45,14 +35,10 @@ def calculate_log_likelihood_generated(samples, mean, sigma):
 
 
 def calculate_log_likelihood(dec_mean_t_, dec_std_t_, Sx_t_):
-    # Ensure the inputs are in the correct shape and on the correct device
     dec_mean_t_ = dec_mean_t_.to(Sx_t_.device)
     dec_std_t_ = dec_std_t_.to(Sx_t_.device)
-    # Create a normal distribution with the predicted mean and std
     pred_dist = tdist.Normal(dec_mean_t_, dec_std_t_)
-    # Compute the log probability of the original signal under this distribution
     log_probs = pred_dist.log_prob(Sx_t_)
-    # Sum the log probabilities over the input dimensions and sequence length
     log_likelihoods = log_probs.sum(dim=[1, 2])
     return log_likelihoods.cpu().numpy()
 
@@ -66,17 +52,15 @@ def run_test_full_data(model_t, data_loader, input_dim_t, average_results=False,
     mse_all_data = torch.empty((0, input_dim_t)).to(device)
 
 
-def plot_tSNE(model_t, data_loader, input_dim_t, average_results=False, plot_selected=False,
-              modify_h=None, modify_z=None, base_dir=None, channel_num=1, tag='_'):
+def plot_vrnn_tests(model_t, data_loader, input_dim_t, average_results=False, plot_selected=False,
+                    modify_h=None, modify_z=None, base_dir=None, channel_num=1, tag='_'):
     model_t.modify_z = modify_z
     model_t.modify_h = modify_h
     model_t.to(device)
     model_t.eval()
     mse_all_data = torch.empty((0, input_dim_t)).to(device)
-    epoch_data_collected = []
     log_likelihood_all_data = []
     all_st = []
-    all_guids = []
     with torch.no_grad():
         for j, complete_batched_data_t in tqdm(enumerate(data_loader), total=len(data_loader)):
             batched_data_t = complete_batched_data_t[0]
@@ -84,18 +68,18 @@ def plot_tSNE(model_t, data_loader, input_dim_t, average_results=False, plot_sel
             epochs_nums = complete_batched_data_t[2]
             batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
             results_t = model_t(batched_data_t)
-            z_latent_t_ = torch.stack(results_t.z_latent, dim=2)  # (batch_size, latent_dim, 150)
-            h_hidden_t_ = torch.stack(results_t.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
+            z_latent_t_ = results_t.z_latent  # (batch_size, latent_dim, 150)
+            h_hidden_t_ = results_t.hidden_states # (hidden_layers, batch_size, input_len, h_dim)
             if h_hidden_t_.dim() == 4:
                 h_hidden_t__ = h_hidden_t_[-1].permute(0, 2, 1)
             else:
                 h_hidden_t__ = h_hidden_t_.permute(0, 2, 1)
-            dec_mean_t_ = torch.stack(results_t.decoder_mean, dim=2)  # (batch_size, input_dim, input_size)
-            dec_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.decoder_std, dim=2)))
+            dec_mean_t_ = results_t.decoder_mean  # (batch_size, input_dim, input_size)
+            dec_std_t_ = torch.sqrt(torch.exp(results_t.decoder_std))
             Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
-            enc_mean_t_ = torch.stack(results_t.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
-            enc_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.encoder_std, dim=2)))
-            kld_values_t_ = torch.stack(results_t.kld_values, dim=2)
+            enc_mean_t_ = results_t.encoder_mean # (batch_size, input_dim, 150)
+            enc_std_t_ = torch.sqrt(torch.exp(results_t.encoder_std))
+            kld_values_t_ = results_t.kld_values
 
             mse_per_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2) / Sx_t_.size(-1)
             mse_all_data = torch.cat((mse_all_data, mse_per_coefficients), dim=0)
@@ -176,18 +160,18 @@ def run_test(model_t, data_loader, input_dim_t, average_results=False, plot_sele
             epochs_nums = complete_batched_data_t[2]
             batched_data_t = batched_data_t.to(device)  # (batch_size, signal_len)
             results_t = model_t(batched_data_t)
-            z_latent_t_ = torch.stack(results_t.z_latent, dim=2)  # (batch_size, latent_dim, 150)
-            h_hidden_t_ = torch.stack(results_t.hidden_states, dim=2)  # (hidden_layers, batch_size, input_len, h_dim)
+            z_latent_t_ = results_t.z_latent  # (batch_size, latent_dim, 150)
+            h_hidden_t_ = results_t.hidden_states  # (hidden_layers, batch_size, input_len, h_dim)
             if h_hidden_t_.dim() == 4:
                 h_hidden_t__ = h_hidden_t_[-1].permute(0, 2, 1)
             else:
                 h_hidden_t__ = h_hidden_t_.permute(0, 2, 1)
-            dec_mean_t_ = torch.stack(results_t.decoder_mean, dim=2)  # (batch_size, input_dim, input_size)
-            dec_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.decoder_std, dim=2)))
+            dec_mean_t_ = results_t.decoder_mean  # (batch_size, input_dim, input_size)
+            dec_std_t_ = torch.sqrt(torch.exp(results_t.decoder_std))
             Sx_t_ = results_t.Sx.permute(1, 2, 0)  # (batch_size, input_dim, 150)
-            enc_mean_t_ = torch.stack(results_t.encoder_mean, dim=2)  # (batch_size, input_dim, 150)
-            enc_std_t_ = torch.sqrt(torch.exp(torch.stack(results_t.encoder_std, dim=2)))
-            kld_values_t_ = torch.stack(results_t.kld_values, dim=2)
+            enc_mean_t_ = results_t.encoder_mean  # (batch_size, input_dim, 150)
+            enc_std_t_ = torch.sqrt(torch.exp(results_t.encoder_std,))
+            kld_values_t_ = results_t.kld_values
 
             mse_per_coefficients = torch.sum(((Sx_t_ - dec_mean_t_) ** 2), dim=2)/Sx_t_.size(-1)
             mse_all_data = torch.cat((mse_all_data, mse_per_coefficients), dim=0)
@@ -351,27 +335,27 @@ if __name__ == '__main__':
     print(checkpoint.keys())
     model.load_state_dict(checkpoint['state_dict'])
 
-    # testing = plot_tSNE(model_t=model, data_loader=test_selected_dataloader, input_dim_t=input_dim,
-    #                     modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
-    #                     channel_num=channel_num, tag='t-SNE-')
-    #
-    # all_st_healthy = run_test(model_t=model, data_loader=test_full_dataloader, input_dim_t=input_dim,
-    #                           modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
-    #                           channel_num=channel_num, tag='General_test_healthy_')
-    #
-    # all_st_hie = run_test(model_t=model, data_loader=test_hie_dataloader, input_dim_t=input_dim,
-    #                       modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
-    #                       channel_num=channel_num, tag='General_test_hie_')
-    #
-    # for i in range(7):
-    #     desired_index = i  # example index
-    #     repeated_sample_dataset = RepeatSampleDataset(fhr_selected_dataset, desired_index)
-    #     batch_size_repeated = 2000
-    #     dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
-    #     mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim,
-    #                                     average_results=True, modify_h=None, modify_z=None,
-    #                                     base_dir=inference_results_dir, channel_num=channel_num,
-    #                                     tag=f'repeated_data_{i}_')
+    testing = plot_vrnn_tests(model_t=model, data_loader=test_selected_dataloader, input_dim_t=input_dim,
+                              modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
+                              channel_num=channel_num, tag='t-SNE-')
+
+    all_st_healthy = run_test(model_t=model, data_loader=test_full_dataloader, input_dim_t=input_dim,
+                              modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
+                              channel_num=channel_num, tag='General_test_healthy_')
+
+    all_st_hie = run_test(model_t=model, data_loader=test_hie_dataloader, input_dim_t=input_dim,
+                          modify_h=None, plot_selected=True, modify_z=None, base_dir=inference_results_dir,
+                          channel_num=channel_num, tag='General_test_hie_')
+
+    for i in range(7):
+        desired_index = i  # example index
+        repeated_sample_dataset = RepeatSampleDataset(fhr_selected_dataset, desired_index)
+        batch_size_repeated = 2000
+        dataloader = DataLoader(repeated_sample_dataset, batch_size=batch_size_repeated, shuffle=False)
+        mse_average_repeated = run_test(model_t=model, data_loader=dataloader, input_dim_t=input_dim,
+                                        average_results=True, modify_h=None, modify_z=None,
+                                        base_dir=inference_results_dir, channel_num=channel_num,
+                                        tag=f'repeated_data_{i}_')
     model.to(device)
     g_samples, g_samples_mean, g_samples_sigma = model.generate(input_size=150, batch_size=100)
     g_samples = g_samples.permute(1, 2, 0)

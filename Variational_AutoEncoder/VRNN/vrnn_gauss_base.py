@@ -17,15 +17,14 @@ class VrnnForward:
     rec_loss: torch.Tensor = None
     kld_loss: float = None
     nll_loss: float = None
-    kld_values: List[torch.Tensor] = None
-    encoder_mean: List[torch.Tensor] = None
-    encoder_std: List[torch.Tensor] = None
-    decoder_mean: List[torch.Tensor] = None
-    decoder_std: List[torch.Tensor] = None
-    Sx: torch.Tensor = None
-    Sx_meta: dict = None
-    z_latent: List[torch.Tensor] = None
-    hidden_states: List[torch.Tensor] = None
+    kld_values: torch.Tensor = None
+    encoder_mean: torch.Tensor = None
+    encoder_std: torch.Tensor = None
+    decoder_mean: torch.Tensor = None
+    decoder_std: torch.Tensor = None
+    sx: torch.Tensor = None
+    z_latent: torch.Tensor = None
+    hidden_states: torch.Tensor = None
 
 
 class VrnnGaussAbs(nn.Module, ABC):

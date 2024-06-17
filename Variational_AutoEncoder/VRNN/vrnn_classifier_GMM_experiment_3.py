@@ -414,19 +414,25 @@ class VRNNGauss(VrnnGaussAbs):
             all_dec_mean.append(dec_mean_t)
             all_dec_std.append(dec_logvar_t)
             all_z_t.append(z_t)
+        torch_enc_mean = torch.stack(all_enc_mean, dim=2)
+        torch_enc_std = torch.stack(all_enc_std, dim=2)
+        torch_z = torch.stack(all_z_t, dim=2)
+        torch_dec_std = torch.stack(all_dec_std, dim=2)
+        torch_dec_mean = torch.stack(all_dec_mean, dim=2)
+        torch_kld_values = torch.stack(all_kld, dim=2)
+        torch_h = torch.stack(all_h, dim=2)
         results = VrnnForward(
             rec_loss=loss,  # (1,)
             kld_loss=kld_loss,  # ()
             nll_loss=loss,
-            encoder_mean=all_enc_mean,  # list(input_size) -> each element: (batch_size, latent_dim)
-            encoder_std=all_enc_std,  # list(input_size) -> each element: (batch_size, latent_dim)
-            decoder_mean=all_dec_mean,  # list(input_size) -> each element: (batch_size, input_dim)
-            decoder_std=all_dec_std,  # list(input_size) -> each element: (batch_size, input_dim)
-            kld_values=all_kld,  # list(input_size) -> each element: (batch_size, latent_dim)
-            Sx=scattering_original,  # (input_size, batch_size, input_dim)
-            Sx_meta=meta,
-            z_latent=all_z_t,  # list(input_size) -> each element: (batch_size, latent_dim)
-            hidden_states=all_h   # list(input_size) -> each element: (n_layers, batch_size, input_dim)
+            encoder_mean=torch_enc_mean,  # (batch_size, latent_dim)
+            encoder_std=torch_enc_std,  # (batch_size, latent_dim)
+            decoder_mean=torch_dec_mean,  # (batch_size, input_dim)
+            decoder_std=torch_dec_std,  # (batch_size, input_dim)
+            kld_values=torch_kld_values,  # (batch_size, latent_dim)
+            sx=scattering_original,  # (input_size, batch_size, input_dim)
+            z_latent=torch_z,  # (batch_size, latent_dim)
+            hidden_states=torch_h   # (n_layers, batch_size, input_dim)
         )
 
         return results
@@ -471,21 +477,31 @@ class VRNNGauss(VrnnGaussAbs):
 
         return sample, sample_mu, sample_sigma
 
-    def loglikelihood_gmm(self, x, mu, logvar, pi):
-        loglike = 0
-        # for all data channels
-        for n in range(x.shape[1]):
-            # likelihood of a single mixture at evaluation point
-            pred_dist = tdist.Normal(mu[:, n, :], logvar[:, n, :].exp().sqrt())
-            x_mod = torch.mm(x[:, n].unsqueeze(1), torch.ones(1, self.n_mixtures, device=self.device))
-            like = pred_dist.log_prob(x_mod)
-            # weighting by probability of mixture and summing
-            temp = (pi[:, n, :] * like)
-            temp = temp.sum()
-            # log-likelihood added to previous log-likelihoods
-            loglike = loglike + temp
+    # def loglikelihood_gmm(self, x, mu, logvar, pi):
+    #     loglike = 0
+    #     # for all data channels
+    #     for n in range(x.shape[1]):
+    #         # likelihood of a single mixture at evaluation point
+    #         pred_dist = tdist.Normal(mu[:, n, :], logvar[:, n, :].exp().sqrt())
+    #         x_mod = torch.mm(x[:, n].unsqueeze(1), torch.ones(1, self.n_mixtures, device=self.device))
+    #         like = pred_dist.log_prob(x_mod)
+    #         # weighting by probability of mixture and summing
+    #         temp = (pi[:, n, :] * like)
+    #         temp = temp.sum()
+    #         # log-likelihood added to previous log-likelihoods
+    #         loglike = loglike + temp
+    #
+    #     return loglike
 
-        return loglike
+    def loglikelihood_gmm(self, x, mu, logvar, pi):
+        std = logvar.exp().sqrt()
+        pred_dist = tdist.Normal(mu, std)
+        x_expanded = x.unsqueeze(-1).expand_as(mu)
+        log_prob = pred_dist.log_prob(x_expanded)
+        weighted_log_prob = pi * log_prob
+        loglike = weighted_log_prob.sum(dim=-1).sum(dim=-1)
+        return torch.sum(loglike)
+
 
     def _reparameterized_sample_gmm(self, mu, logvar, pi):
         # select the mixture indices

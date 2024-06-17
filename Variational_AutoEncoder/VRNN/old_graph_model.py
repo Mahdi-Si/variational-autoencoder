@@ -7,16 +7,13 @@ import yaml
 import logging
 from datetime import datetime
 import sys
-import pickle
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, random_split
-import torch.nn.functional as F
 import numpy as np
 from vrnn_classifier_gauss_experiment_1 import VRNNGauss, ClassifierBlock, VRNNClassifier
-from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload, FhrUpPreload
-from Variational_AutoEncoder.utils.data_utils import plot_scattering_v2, plot_loss_dict
-from Variational_AutoEncoder.utils.run_utils import log_resource_usage, StreamToLogger, setup_logging
+from Variational_AutoEncoder.datasets.custom_datasets import JsonDatasetPreload
+from Variational_AutoEncoder.utils.run_utils import StreamToLogger, setup_logging
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
